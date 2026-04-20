@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: delivery
+      POSTGRES_PASSWORD: delivery_secret
+      POSTGRES_DB: delivery_db
+    ports:
+      - "5433:5432"
+    volumes:
+      - delivery_pg_data:/var/lib/postgresql/data
+
+volumes:
+  delivery_pg_data:
