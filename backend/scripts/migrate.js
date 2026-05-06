@@ -2,14 +2,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-
-dotenv.config();
+import { env } from '../src/config/env.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error('DATABASE_URL não definido');
+if (!env.database) {
+  console.error('Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD e DB_DATABASE');
   process.exit(1);
 }
 
@@ -19,7 +16,7 @@ const files = fs
   .filter((f) => f.endsWith('.sql'))
   .sort();
 
-const connection = await mysql.createConnection({ uri: url, multipleStatements: false });
+const connection = await mysql.createConnection({ ...env.database, multipleStatements: false });
 try {
   for (const file of files) {
     const sqlPath = path.join(migrationsDir, file);

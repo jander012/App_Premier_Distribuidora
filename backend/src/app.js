@@ -1,7 +1,9 @@
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
+import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env.js';
+import { openApiSpec } from './docs/openapi.js';
 import { errorHandler } from './middlewares/errorHandler.js';
 import { authenticateAdmin } from './middlewares/authenticateAdmin.js';
 import { requireAdminStore } from './middlewares/requireAdminStore.js';
@@ -40,6 +42,9 @@ const adminProtected = [authenticateAdmin, requireAdminStore];
 const adminPlatform = [authenticateAdmin, requireSuperAdmin];
 
 const allowedOrigins = env.corsOrigins;
+
+app.get('/docs.json', (req, res) => res.json(openApiSpec));
+app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec));
 
 /** Permite Vite dev (5173), preview (4173) e qualquer porta em localhost/127.0.0.1 quando CORS_ORIGINS não está definido. */
 function isDefaultLocalDevOrigin(origin) {

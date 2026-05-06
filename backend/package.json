@@ -23,6 +23,7 @@
     "jsonwebtoken": "^9.0.2",
     "mysql2": "^3.22.3",
     "node-thermal-printer": "^4.6.0",
+    "swagger-ui-express": "^5.0.1",
     "uuid": "^10.0.0"
   }
 }

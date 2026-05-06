@@ -1,16 +1,13 @@
 import bcrypt from 'bcryptjs';
 import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
+import { env } from '../src/config/env.js';
 
-dotenv.config();
-
-const url = process.env.DATABASE_URL;
-if (!url) {
-  console.error('DATABASE_URL não definido');
+if (!env.database) {
+  console.error('Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD e DB_DATABASE');
   process.exit(1);
 }
 
-const connection = await mysql.createConnection({ uri: url });
+const connection = await mysql.createConnection(env.database);
 
 async function query(sql, params = []) {
   const nextParams = [];

@@ -13,6 +13,28 @@ const corsOrigins = corsRaw
   .map((s) => s.trim())
   .filter(Boolean);
 
+function parseDatabaseConfig() {
+  if (process.env.DATABASE_URL) {
+    return { uri: process.env.DATABASE_URL };
+  }
+
+  const host = process.env.DB_HOST;
+  const user = process.env.DB_USER;
+  const database = process.env.DB_DATABASE;
+
+  if (!host || !user || !database) {
+    return null;
+  }
+
+  return {
+    host,
+    port: Number(process.env.DB_PORT) || 3306,
+    user,
+    password: process.env.DB_PASSWORD || '',
+    database,
+  };
+}
+
 /**
  * Express "trust proxy": número de hops (ex.: 1) ou false.
  * Não use boolean `true` — o express-rate-limit rejeita.
@@ -33,7 +55,7 @@ export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
   nodeEnv: process.env.NODE_ENV || 'development',
-  databaseUrl: process.env.DATABASE_URL,
+  database: parseDatabaseConfig(),
   jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   clientJwtExpiresIn: process.env.CLIENT_JWT_EXPIRES_IN || '8h',

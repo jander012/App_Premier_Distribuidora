@@ -1,8 +1,8 @@
 import mysql from 'mysql2/promise';
 import { env } from './env.js';
 
-if (!env.databaseUrl) {
-  throw new Error('DATABASE_URL é obrigatório');
+if (!env.database) {
+  throw new Error('Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD e DB_DATABASE');
 }
 
 function normalizeParams(params = []) {
@@ -70,7 +70,7 @@ function normalizeResult(result) {
 }
 
 const mysqlPool = mysql.createPool({
-  uri: env.databaseUrl,
+  ...env.database,
   waitForConnections: true,
   connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
   namedPlaceholders: false,
