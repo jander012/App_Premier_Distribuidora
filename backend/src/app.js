@@ -104,6 +104,8 @@ app.post(
 app.get('/orders/me', authenticateClient, orderController.listMine);
 app.get('/orders/:id', authenticateClient, orderController.getOne);
 app.patch('/orders/:id/status', ...adminProtected, orderController.patchStatus);
+app.get('/delivery-confirmations/:token', orderController.getDeliveryConfirmation);
+app.post('/delivery-confirmations/:token/confirm', orderController.confirmDelivery);
 
 app.post('/payments/pix', requireInternalApiKey, paymentController.pix);
 app.post('/payments/cash', requireInternalApiKey, paymentController.cash);

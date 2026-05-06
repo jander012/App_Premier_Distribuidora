@@ -6,6 +6,7 @@ const STATUS_LABEL = {
   received: 'Pedido recebido',
   preparing: 'Em preparo',
   out_for_delivery: 'Saiu para entrega',
+  delivered_pending_confirmation: 'Aguardando confirmação de entrega',
   delivered: 'Entregue',
   cancelled: 'Cancelado',
 };
@@ -73,6 +74,15 @@ export function buildStatusUpdateMessage(order) {
   return `Pedido #${order.id}: ${STATUS_LABEL[order.status] || order.status}`;
 }
 
+export function buildDeliveryConfirmationMessage(order, confirmationUrl) {
+  return (
+    `Pedido #${order.id} saiu para entrega.\n\n` +
+    `Total: R$ ${Number(order.total).toFixed(2)}\n` +
+    `Endereço: ${order.delivery_street}, ${order.delivery_number} - ${order.delivery_neighborhood}\n\n` +
+    `Quando receber, confirme a entrega neste link:\n${confirmationUrl}`
+  );
+}
+
 export async function sendMenuLink(toPhoneDigits, metadata = {}) {
   const provider = getWhatsAppProvider();
   const body = buildMenuLinkMessage(toPhoneDigits);
@@ -118,6 +128,23 @@ export async function sendStatusUpdate(order) {
     body,
     providerRef: result.providerRef,
     payload: { orderId: order.id, status: order.status },
+    status: 'sent',
+  });
+  return result;
+}
+
+export async function sendDeliveryConfirmationRequest(order, confirmationUrl) {
+  const provider = getWhatsAppProvider();
+  const body = buildDeliveryConfirmationMessage(order, confirmationUrl);
+  const digits = String(order.customer_phone).replace(/\D/g, '');
+  const result = await provider.sendText({ to: digits, body, metadata: { orderId: order.id, confirmationUrl } });
+  await logRepo.logMessage({
+    orderId: order.id,
+    templateKey: 'delivery_confirmation_request',
+    toPhone: digits,
+    body,
+    providerRef: result.providerRef,
+    payload: { orderId: order.id, confirmationUrl, raw: result.raw },
     status: 'sent',
   });
   return result;

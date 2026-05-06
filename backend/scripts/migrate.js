@@ -29,7 +29,14 @@ try {
       .map((s) => s.trim())
       .filter(Boolean);
     for (const statement of statements) {
-      await connection.query(statement);
+      try {
+        await connection.query(statement);
+      } catch (e) {
+        if (e?.code === 'ER_DUP_FIELDNAME') {
+          continue;
+        }
+        throw e;
+      }
     }
     console.log('Migração aplicada:', file);
   }

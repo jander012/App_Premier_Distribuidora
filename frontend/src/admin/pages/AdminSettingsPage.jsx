@@ -33,6 +33,8 @@ export function AdminSettingsPage() {
           whatsapp_welcome_template: fd.get('whatsapp_welcome_template'),
           whatsapp_order_confirm_template: fd.get('whatsapp_order_confirm_template'),
           whatsapp_status_template: fd.get('whatsapp_status_template'),
+          linx_integration_enabled: fd.get('linx_integration_enabled') === 'on',
+          pickingo_integration_enabled: fd.get('pickingo_integration_enabled') === 'on',
         },
         { headers: adminHeaders() }
       );
@@ -76,6 +78,23 @@ export function AdminSettingsPage() {
           <label>Template status (opcional)</label>
           <textarea name="whatsapp_status_template" defaultValue={settings.whatsapp_status_template || ''} rows={2} />
         </div>
+        <div className="section-label">Integrações</div>
+        <label className="check-row">
+          <input
+            name="linx_integration_enabled"
+            type="checkbox"
+            defaultChecked={Boolean(settings.linx_integration_enabled)}
+          />
+          Enviar pedidos para Linx POS
+        </label>
+        <label className="check-row">
+          <input
+            name="pickingo_integration_enabled"
+            type="checkbox"
+            defaultChecked={Boolean(settings.pickingo_integration_enabled)}
+          />
+          Criar entrega na Pickingo
+        </label>
         <button type="submit" className="btn btn-primary">
           Salvar
         </button>
