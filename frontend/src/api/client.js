@@ -4,7 +4,10 @@
  * - Direto ao backend: use `http://127.0.0.1:4020` (sem `/api` no final — as rotas são `/admin/...`, não `/api/admin/...`).
  */
 function resolveApiBase() {
-  const raw = (import.meta.env.VITE_API_URL || '/api').trim();
+  const raw = (
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? window.location.origin : '/api')
+).trim();
   if (!raw) return '/api';
   if (/^https?:\/\//i.test(raw)) {
     let b = raw.replace(/\/+$/, '');
