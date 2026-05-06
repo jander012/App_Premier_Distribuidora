@@ -84,7 +84,7 @@ export async function createOrder(body, opts = {}) {
   try {
     await client.query('BEGIN');
 
-    const orderRow = await client.query(
+    const orderResult = await client.query(
       `INSERT INTO orders (
         store_id, customer_id, cart_id, status, subtotal, delivery_fee, coupon_id, coupon_discount, total,
         payment_method_code, payment_meta,
@@ -92,9 +92,9 @@ export async function createOrder(body, opts = {}) {
         delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
         customer_full_name, customer_cpf, customer_email, customer_phone
       ) VALUES (
-        $1, $2, $3, 'received', $4, $5, $6, $7, $8, $9, $10::jsonb,
+        $1, $2, $3, 'received', $4, $5, $6, $7, $8, $9, $10,
         $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
-      ) RETURNING *`,
+      )`,
       [
         summary.storeId,
         customer.id,
@@ -120,7 +120,8 @@ export async function createOrder(body, opts = {}) {
         phone,
       ]
     );
-    order = orderRow.rows[0];
+    const { rows: orderRows } = await client.query(`SELECT * FROM orders WHERE id = $1`, [orderResult.insertId]);
+    order = orderRows[0];
 
     if (couponId != null && couponDiscount > 0) {
       await client.query(
@@ -134,7 +135,7 @@ export async function createOrder(body, opts = {}) {
       await client.query(
         `INSERT INTO order_items
           (order_id, product_id, product_name, unit_price, quantity, note, options_snapshot, line_total)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
         [
           order.id,
           line.productId,

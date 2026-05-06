@@ -74,24 +74,24 @@ export async function upsertDeliveryPolygon(storeId, geojsonObject) {
     ringPoints: Array.isArray(ring) ? ring.length : 0,
   });
   try {
-    const { rows, rowCount } = await query(
+    const result = await query(
       `INSERT INTO store_delivery_polygons (store_id, geojson, updated_at)
-       VALUES ($1, $2::jsonb, now())
-       ON CONFLICT (store_id) DO UPDATE SET geojson = EXCLUDED.geojson, updated_at = now()
-       RETURNING store_id`,
+       VALUES ($1, $2, now())
+       ON DUPLICATE KEY UPDATE geojson = VALUES(geojson), updated_at = now()`,
       [sid, jsonStr]
     );
+    const { rows } = await query(`SELECT store_id FROM store_delivery_polygons WHERE store_id = $1`, [sid]);
     if (!rows?.length) {
       throw new AppError(500, 'Gravação do polígono não retornou confirmação do banco');
     }
-    logPolygonInfo('upsert: OK em store_delivery_polygons', { storeId: sid, rowCount, returnedId: rows[0].store_id });
+    logPolygonInfo('upsert: OK em store_delivery_polygons', { storeId: sid, rowCount: result.rowCount, returnedId: rows[0].store_id });
   } catch (e) {
     logPolygonError('upsert: falhou em store_delivery_polygons (migração 010?)', e, { storeId: sid });
     throw e;
   }
   try {
     const cfg = await query(
-      `UPDATE store_configs SET delivery_area_polygon = $2::jsonb, updated_at = now() WHERE store_id = $1`,
+      `UPDATE store_configs SET delivery_area_polygon = $2, updated_at = now() WHERE store_id = $1`,
       [sid, jsonStr]
     );
     if (cfg.rowCount === 0) {
@@ -207,7 +207,7 @@ export async function replaceTimeRates(storeId, rates) {
     if (!Number.isFinite(pricePerKm) || pricePerKm < 0) continue;
     await query(
       `INSERT INTO store_delivery_time_rates (store_id, time_start, time_end, price_per_km, sort_order)
-       VALUES ($1, $2::time, $3::time, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)`,
       [storeId, timeStart, timeEnd, pricePerKm, sortOrder]
     );
     i += 1;

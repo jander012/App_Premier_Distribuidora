@@ -1,14 +1,15 @@
 services:
-  postgres:
-    image: postgres:16-alpine
+  mysql:
+    image: mysql:8.4
     environment:
-      POSTGRES_USER: delivery
-      POSTGRES_PASSWORD: delivery_secret
-      POSTGRES_DB: delivery_db
+      MYSQL_ROOT_PASSWORD: root_secret
+      MYSQL_DATABASE: delivery_db
+      MYSQL_USER: delivery
+      MYSQL_PASSWORD: delivery_secret
     ports:
-      - "5433:5432"
+      - "3307:3306"
     volumes:
-      - delivery_pg_data:/var/lib/postgresql/data
+      - delivery_mysql_data:/var/lib/mysql
 
 volumes:
-  delivery_pg_data:
+  delivery_mysql_data:

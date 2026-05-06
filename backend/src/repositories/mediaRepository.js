@@ -11,26 +11,26 @@ export async function upsertMediaByPublicUrl(publicUrl, opts = {}) {
   const storeId = opts.storeId ?? null;
   const titleRaw = opts.title != null ? String(opts.title).trim() : '';
   const titleVal = titleRaw.length ? titleRaw : null;
-  const { rows } = await query(
+  await query(
     `INSERT INTO media_assets (content_hash, public_url, store_id, title)
-     VALUES (encode(digest($1::text, 'sha256'), 'hex'), $1, $2, $3)
-     ON CONFLICT (content_hash) DO UPDATE SET
-       public_url = EXCLUDED.public_url,
-       store_id = COALESCE(EXCLUDED.store_id, media_assets.store_id),
+     VALUES (SHA2($1, 256), $1, $2, $3)
+     ON DUPLICATE KEY UPDATE
+       public_url = VALUES(public_url),
+       store_id = COALESCE(VALUES(store_id), media_assets.store_id),
        title = CASE
-         WHEN EXCLUDED.title IS NOT NULL AND length(trim(EXCLUDED.title)) > 0 THEN EXCLUDED.title
+         WHEN VALUES(title) IS NOT NULL AND length(trim(VALUES(title))) > 0 THEN VALUES(title)
          ELSE media_assets.title
-       END
-     RETURNING *`,
+       END`,
     [url, storeId, titleVal]
   );
+  const { rows } = await query(`SELECT * FROM media_assets WHERE content_hash = SHA2($1, 256)`, [url]);
   return rows[0];
 }
 
 export async function findById(id) {
   const uuid = String(id ?? '').trim();
   if (!uuid) return null;
-  const { rows } = await query(`SELECT * FROM media_assets WHERE id = $1::uuid`, [uuid]);
+  const { rows } = await query(`SELECT * FROM media_assets WHERE id = $1`, [uuid]);
   return rows[0] || null;
 }
 
@@ -45,9 +45,9 @@ export async function findForMediaFileServe(pathUuid) {
   const pathShort = `/media/files/${u.toLowerCase()}`;
   const { rows } = await query(
     `SELECT * FROM media_assets
-     WHERE id = $1::uuid
-        OR lower(regexp_replace(trim(public_url), '^https?://[^/]+', '', 'i')) IN ($2, $3)
-     ORDER BY (storage_path IS NOT NULL AND btrim(COALESCE(storage_path, '')) <> '') DESC, created_at DESC
+     WHERE id = $1
+        OR lower(REGEXP_REPLACE(trim(public_url), '^https?://[^/]+', '', 1, 0, 'i')) IN ($2, $3)
+     ORDER BY (storage_path IS NOT NULL AND trim(COALESCE(storage_path, '')) <> '') DESC, created_at DESC
      LIMIT 1`,
     [u, pathApi, pathShort]
   );
@@ -72,18 +72,18 @@ export async function mergeMediaStoreAndTitle(contentHash, patch = {}) {
   const titleRaw = patch.title != null ? String(patch.title).trim() : '';
   const titleParam = titleRaw.length ? titleRaw : null;
   const sourceUrl = patch.sourceUrl != null && String(patch.sourceUrl).trim() ? String(patch.sourceUrl).trim() : null;
-  const { rows } = await query(
+  await query(
     `UPDATE media_assets SET
-       store_id = COALESCE($2::integer, store_id),
+       store_id = COALESCE($2, store_id),
        title = CASE
-         WHEN $3::text IS NOT NULL AND length(trim($3::text)) > 0 THEN $3
+         WHEN $3 IS NOT NULL AND length(trim($3)) > 0 THEN $3
          ELSE title
        END,
-       source_url = COALESCE(media_assets.source_url, $4::text)
-     WHERE content_hash = $1
-     RETURNING *`,
+       source_url = COALESCE(media_assets.source_url, $4)
+     WHERE content_hash = $1`,
     [h, storeId, titleParam, sourceUrl]
   );
+  const { rows } = await query(`SELECT * FROM media_assets WHERE content_hash = $1`, [h]);
   return rows[0] || null;
 }
 
@@ -93,10 +93,9 @@ export async function mergeMediaStoreAndTitle(contentHash, patch = {}) {
 export async function insertMirroredMedia(row) {
   const titleRaw = row.title != null ? String(row.title).trim() : '';
   const titleVal = titleRaw.length ? titleRaw : null;
-  const { rows } = await query(
+  await query(
     `INSERT INTO media_assets (id, content_hash, public_url, store_id, title, storage_path, mime_type, source_url)
-     VALUES ($1::uuid, $2::char(64), $3, $4, $5, $6, $7, $8)
-     RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       row.id,
       row.contentHash,
@@ -108,6 +107,7 @@ export async function insertMirroredMedia(row) {
       row.sourceUrl ?? null,
     ]
   );
+  const { rows } = await query(`SELECT * FROM media_assets WHERE id = $1`, [row.id]);
   return rows[0];
 }
 
@@ -121,24 +121,21 @@ export async function listByStore(storeId, { page = 1, limit = 24, q } = {}) {
   let where = 'WHERE (store_id = $1 OR store_id IS NULL)';
   if (search) {
     baseParams.push(search);
-    where += ` AND (public_url ILIKE $2 OR COALESCE(title, '') ILIKE $2)`;
+    where += ` AND (public_url LIKE $2 OR COALESCE(title, '') LIKE $2)`;
   }
 
   const { rows: countRows } = await query(
-    `SELECT COUNT(*)::int AS n FROM media_assets ${where}`,
+    `SELECT COUNT(*) AS n FROM media_assets ${where}`,
     baseParams
   );
   const total = countRows[0]?.n ?? 0;
 
-  const listParams = [...baseParams, safeLimit, offset];
-  const li = listParams.length - 1;
-  const oi = listParams.length;
   const { rows } = await query(
     `SELECT id, public_url, title, content_hash, created_at, storage_path, source_url, mime_type
      FROM media_assets ${where}
      ORDER BY created_at DESC
-     LIMIT $${li} OFFSET $${oi}`,
-    listParams
+     LIMIT ${safeLimit} OFFSET ${offset}`,
+    baseParams
   );
 
   return {
@@ -166,7 +163,7 @@ export async function deleteByIdForStore(id, storeId) {
   }
 
   const { rows: use } = await query(
-    `SELECT COUNT(*)::int AS n FROM products WHERE image_asset_id = $1::uuid`,
+    `SELECT COUNT(*) AS n FROM products WHERE image_asset_id = $1`,
     [uuid]
   );
   if ((use[0]?.n ?? 0) > 0) {
@@ -176,13 +173,13 @@ export async function deleteByIdForStore(id, storeId) {
   const storagePath = existing.storage_path ? String(existing.storage_path) : null;
 
   if (existing.store_id == null) {
-    const del = await query(`DELETE FROM media_assets WHERE id = $1::uuid AND store_id IS NULL`, [uuid]);
+    const del = await query(`DELETE FROM media_assets WHERE id = $1 AND store_id IS NULL`, [uuid]);
     const n = del.rowCount ?? 0;
     return { ok: n > 0, reason: n > 0 ? null : 'not_found', storagePath: n > 0 ? storagePath : null };
   }
 
   const del = await query(
-    `DELETE FROM media_assets WHERE id = $1::uuid AND store_id = $2::int`,
+    `DELETE FROM media_assets WHERE id = $1 AND store_id = $2`,
     [uuid, sid]
   );
   const n = del.rowCount ?? 0;

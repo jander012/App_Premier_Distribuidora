@@ -28,12 +28,12 @@ export async function findActiveByCode(storeId, rawCode) {
 }
 
 export async function insertCoupon(storeId, row) {
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO coupons (
       store_id, code, active, discount_type, percent_value, max_discount_per_order, fixed_amount,
       max_uses_per_user, max_total_discount_per_user, valid_from, valid_until
     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-    RETURNING *`,
+    `,
     [
       storeId,
       String(row.code).trim(),
@@ -48,6 +48,7 @@ export async function insertCoupon(storeId, row) {
       row.valid_until ?? null,
     ]
   );
+  const { rows } = await query(`SELECT * FROM coupons WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
@@ -86,7 +87,7 @@ export async function deleteCoupon(id, storeId) {
 
 export async function countUsesByCustomer(couponId, customerId) {
   const { rows } = await query(
-    `SELECT COUNT(*)::int AS n FROM coupon_redemptions WHERE coupon_id = $1 AND customer_id = $2`,
+    `SELECT COUNT(*) AS n FROM coupon_redemptions WHERE coupon_id = $1 AND customer_id = $2`,
     [couponId, customerId]
   );
   return rows[0]?.n ?? 0;
@@ -94,7 +95,7 @@ export async function countUsesByCustomer(couponId, customerId) {
 
 export async function sumDiscountByCustomer(couponId, customerId) {
   const { rows } = await query(
-    `SELECT COALESCE(SUM(discount_amount), 0)::numeric AS s
+    `SELECT COALESCE(SUM(discount_amount), 0) AS s
      FROM coupon_redemptions WHERE coupon_id = $1 AND customer_id = $2`,
     [couponId, customerId]
   );

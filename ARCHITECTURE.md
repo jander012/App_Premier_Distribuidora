@@ -1,6 +1,6 @@
 # Delivery + Cardápio digital + WhatsApp — Arquitetura (MVP)
 
-Solução monorepo em `app_loja`: **React (Vite)** no frontend, **Node.js (Express)** no backend, **PostgreSQL** no banco. Integrações **WhatsApp** e **PIX** estão em provedores trocáveis (stub no MVP).
+Solução monorepo em `app_loja`: **React (Vite)** no frontend, **Node.js (Express)** no backend, **MySQL** no banco. Integrações **WhatsApp** e **PIX** estão em provedores trocáveis (stub no MVP).
 
 ---
 
@@ -19,7 +19,7 @@ flowchart TB
     WH[Integração WhatsApp]
     PX[Integração PIX]
   end
-  DB[(PostgreSQL)]
+  DB[(MySQL)]
   PWA --> R
   R --> S
   S --> REP
@@ -42,7 +42,7 @@ flowchart TB
 
 ---
 
-## 2. Modelo de dados (PostgreSQL)
+## 2. Modelo de dados (MySQL)
 
 ```mermaid
 erDiagram

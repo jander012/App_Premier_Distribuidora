@@ -29,7 +29,7 @@ export async function findAdminById(id) {
 
 export async function linkAdminToStore(adminUserId, storeId) {
   await query(
-    `INSERT INTO admin_user_stores (admin_user_id, store_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+    `INSERT IGNORE INTO admin_user_stores (admin_user_id, store_id) VALUES ($1, $2)`,
     [adminUserId, storeId]
   );
 }
@@ -37,18 +37,20 @@ export async function linkAdminToStore(adminUserId, storeId) {
 export async function setAdminStores(adminUserId, storeIds) {
   await query(`DELETE FROM admin_user_stores WHERE admin_user_id = $1`, [adminUserId]);
   if (!storeIds.length) return;
-  await query(
-    `INSERT INTO admin_user_stores (admin_user_id, store_id) SELECT $1, unnest($2::int[])`,
-    [adminUserId, storeIds]
-  );
+  for (const storeId of storeIds) {
+    await linkAdminToStore(adminUserId, storeId);
+  }
 }
 
 export async function createAdminUser({ email, passwordHash, isSuperAdmin }) {
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO admin_users (email, password_hash, is_super_admin) VALUES ($1, $2, $3)
-     RETURNING id, email, is_super_admin, created_at`,
+     `,
     [email, passwordHash, Boolean(isSuperAdmin)]
   );
+  const { rows } = await query(`SELECT id, email, is_super_admin, created_at FROM admin_users WHERE id = $1`, [
+    result.insertId,
+  ]);
   return rows[0];
 }
 
@@ -56,14 +58,14 @@ export async function listAdminsWithStores() {
   const { rows } = await query(`
     SELECT au.id, au.email, au.is_super_admin, au.created_at,
       COALESCE(
-        (SELECT json_agg(
-            json_build_object('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
-            ORDER BY s.name
-          )
+        (SELECT CONCAT('[', GROUP_CONCAT(
+            JSON_OBJECT('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
+            ORDER BY s.name SEPARATOR ','
+          ), ']')
          FROM admin_user_stores aus
          JOIN stores s ON s.id = aus.store_id
          WHERE aus.admin_user_id = au.id),
-        '[]'::json
+        '[]'
       ) AS stores
     FROM admin_users au
     ORDER BY au.email
@@ -73,24 +75,25 @@ export async function listAdminsWithStores() {
 
 export async function listAdminsWithStoresByIds(ids) {
   if (!ids.length) return [];
+  const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
   const { rows } = await query(
     `
     SELECT au.id, au.email, au.is_super_admin, au.created_at,
       COALESCE(
-        (SELECT json_agg(
-            json_build_object('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
-            ORDER BY s.name
-          )
+        (SELECT CONCAT('[', GROUP_CONCAT(
+            JSON_OBJECT('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
+            ORDER BY s.name SEPARATOR ','
+          ), ']')
          FROM admin_user_stores aus
          JOIN stores s ON s.id = aus.store_id
          WHERE aus.admin_user_id = au.id),
-        '[]'::json
+        '[]'
       ) AS stores
     FROM admin_users au
-    WHERE au.id = ANY($1::int[])
+    WHERE au.id IN (${placeholders})
     ORDER BY au.email
   `,
-    [ids]
+    ids
   );
   return rows;
 }

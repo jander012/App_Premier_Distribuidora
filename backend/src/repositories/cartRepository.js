@@ -1,11 +1,10 @@
 import { query } from '../config/db.js';
+import { randomUUID } from 'crypto';
 
 export async function createCart(customerId = null) {
-  const { rows } = await query(
-    `INSERT INTO carts (customer_id) VALUES ($1) RETURNING *`,
-    [customerId]
-  );
-  return rows[0];
+  const id = randomUUID();
+  await query(`INSERT INTO carts (id, customer_id) VALUES ($1, $2)`, [id, customerId]);
+  return getCart(id);
 }
 
 export async function getCart(cartId) {
@@ -49,7 +48,7 @@ export async function setCartStoreId(cartId, storeId) {
 }
 
 export async function clearCartStoreIfEmpty(cartId) {
-  const { rows } = await query(`SELECT COUNT(*)::int AS n FROM cart_items WHERE cart_id = $1`, [cartId]);
+  const { rows } = await query(`SELECT COUNT(*) AS n FROM cart_items WHERE cart_id = $1`, [cartId]);
   if ((rows[0]?.n ?? 0) === 0) {
     await query(`UPDATE carts SET store_id = NULL, updated_at = now() WHERE id = $1`, [cartId]);
   }
@@ -57,43 +56,44 @@ export async function clearCartStoreIfEmpty(cartId) {
 
 export async function getOptionExtras(productId, optionIds) {
   if (!optionIds?.length) return [];
+  const placeholders = optionIds.map((_, index) => `$${index + 2}`).join(', ');
   const { rows } = await query(
     `SELECT id, name, price_extra FROM product_options
-     WHERE product_id = $1 AND id = ANY($2::int[]) AND active = true`,
-    [productId, optionIds]
+     WHERE product_id = $1 AND id IN (${placeholders}) AND active = true`,
+    [productId, ...optionIds]
   );
   return rows;
 }
 
 export async function addCartItem({ cartId, productId, quantity, note, optionIds }) {
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO cart_items (cart_id, product_id, quantity, note, option_ids)
-     VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5)`,
     [cartId, productId, quantity, note || null, optionIds || []]
   );
   await query(`UPDATE carts SET updated_at = now() WHERE id = $1`, [cartId]);
+  const { rows } = await query(`SELECT * FROM cart_items WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
 export async function updateCartItem(cartId, itemId, { quantity, note, optionIds }) {
-  const { rows } = await query(
+  await query(
     `UPDATE cart_items SET
        quantity = COALESCE($3, quantity),
        note = COALESCE($4, note),
        option_ids = COALESCE($5, option_ids),
        updated_at = now()
-     WHERE id = $2 AND cart_id = $1 RETURNING *`,
+     WHERE id = $2 AND cart_id = $1`,
     [cartId, itemId, quantity, note, optionIds]
   );
+  const { rows } = await query(`SELECT * FROM cart_items WHERE id = $1 AND cart_id = $2`, [itemId, cartId]);
   return rows[0];
 }
 
 export async function deleteCartItem(cartId, itemId) {
-  const { rows } = await query(
-    `DELETE FROM cart_items WHERE id = $2 AND cart_id = $1 RETURNING cart_id`,
-    [cartId, itemId]
-  );
+  const { rows } = await query(`SELECT cart_id FROM cart_items WHERE id = $1 AND cart_id = $2`, [itemId, cartId]);
   if (rows[0]) {
+    await query(`DELETE FROM cart_items WHERE id = $1 AND cart_id = $2`, [itemId, cartId]);
     await query(`UPDATE carts SET updated_at = now() WHERE id = $1`, [rows[0].cart_id]);
     await clearCartStoreIfEmpty(cartId);
   }

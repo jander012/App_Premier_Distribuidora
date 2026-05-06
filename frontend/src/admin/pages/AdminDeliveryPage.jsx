@@ -188,7 +188,7 @@ export function AdminDeliveryPage() {
       </p>
       {data?.storeId != null && (
         <p className="muted" style={{ marginTop: 4, fontSize: '0.82rem' }}>
-          <strong>Loja (store_id) {data.storeId}</strong> — no Postgres use{' '}
+          <strong>Loja (store_id) {data.storeId}</strong> — no MySQL use{' '}
           <code>SELECT * FROM store_delivery_polygons WHERE store_id = {data.storeId};</code>
         </p>
       )}

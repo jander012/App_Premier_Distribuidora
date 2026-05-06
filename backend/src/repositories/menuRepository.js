@@ -87,7 +87,7 @@ export async function adminGetProductById(id, storeId) {
 export async function adminListCategories(storeId) {
   const { rows } = await query(
     `SELECT c.*,
-       (SELECT COUNT(*)::int FROM products p WHERE p.category_id = c.id AND p.store_id = c.store_id) AS product_count
+       (SELECT COUNT(*) FROM products p WHERE p.category_id = c.id AND p.store_id = c.store_id) AS product_count
      FROM categories c
      WHERE c.store_id = $1
      ORDER BY c.sort_order, c.id`,
@@ -99,10 +99,11 @@ export async function adminListCategories(storeId) {
 export async function adminCreateCategory({ name, sortOrder = 0, active = true, storeId }) {
   const n = String(name || '').trim();
   if (!n) throw new AppError(400, 'Nome da categoria obrigatório');
-  const { rows } = await query(
-    `INSERT INTO categories (name, sort_order, active, store_id) VALUES ($1, $2, $3, $4) RETURNING *`,
+  const result = await query(
+    `INSERT INTO categories (name, sort_order, active, store_id) VALUES ($1, $2, $3, $4)`,
     [n, Number(sortOrder) || 0, active !== false, storeId]
   );
+  const { rows } = await query(`SELECT * FROM categories WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
@@ -113,17 +114,18 @@ export async function adminUpdateCategory(id, storeId, data) {
   const name = data.name !== undefined ? data.name : row.name;
   const sortOrder = data.sortOrder !== undefined ? data.sortOrder : row.sort_order;
   const active = data.active !== undefined ? data.active : row.active;
-  const { rows } = await query(
+  await query(
     `UPDATE categories SET name = $3, sort_order = $4, active = $5, updated_at = now()
-     WHERE id = $1 AND store_id = $2 RETURNING *`,
+     WHERE id = $1 AND store_id = $2`,
     [id, storeId, name, sortOrder, active]
   );
+  const { rows } = await query(`SELECT * FROM categories WHERE id = $1 AND store_id = $2`, [id, storeId]);
   return rows[0];
 }
 
 export async function adminCountProductsInCategory(categoryId, storeId) {
   const { rows } = await query(
-    `SELECT COUNT(*)::int AS n FROM products WHERE category_id = $1 AND store_id = $2`,
+    `SELECT COUNT(*) AS n FROM products WHERE category_id = $1 AND store_id = $2`,
     [categoryId, storeId]
   );
   return rows[0]?.n ?? 0;
@@ -169,9 +171,9 @@ async function resolveImageAsset(imageUrl, storeId) {
 
 export async function adminCreateProduct(data) {
   const { image_url, image_asset_id } = await resolveImageAsset(data.imageUrl, data.storeId);
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO products (category_id, name, description, price, image_url, image_asset_id, available, store_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       data.categoryId,
       data.name,
@@ -183,6 +185,7 @@ export async function adminCreateProduct(data) {
       data.storeId,
     ]
   );
+  const { rows } = await query(`SELECT * FROM products WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
@@ -206,7 +209,7 @@ export async function adminUpdateProduct(id, storeId, data) {
     }
   }
 
-  const { rows } = await query(
+  await query(
     `UPDATE products SET
        category_id = COALESCE($3, category_id),
        name = COALESCE($4, name),
@@ -216,7 +219,7 @@ export async function adminUpdateProduct(id, storeId, data) {
        image_asset_id = $8,
        available = COALESCE($9, available),
        updated_at = now()
-     WHERE id = $1 AND store_id = $2 RETURNING *`,
+     WHERE id = $1 AND store_id = $2`,
     [
       id,
       storeId,
@@ -229,14 +232,16 @@ export async function adminUpdateProduct(id, storeId, data) {
       data.available,
     ]
   );
+  const { rows } = await query(`SELECT * FROM products WHERE id = $1 AND store_id = $2`, [id, storeId]);
   return rows[0];
 }
 
 export async function adminSetAvailability(id, storeId, available) {
-  const { rows } = await query(
-    `UPDATE products SET available = $3, updated_at = now() WHERE id = $1 AND store_id = $2 RETURNING *`,
+  await query(
+    `UPDATE products SET available = $3, updated_at = now() WHERE id = $1 AND store_id = $2`,
     [id, storeId, available]
   );
+  const { rows } = await query(`SELECT * FROM products WHERE id = $1 AND store_id = $2`, [id, storeId]);
   return rows[0];
 }
 
@@ -255,18 +260,15 @@ export async function adminListProductsPage(storeId, { page = 1, limit = 12, q }
   let where = 'WHERE p.store_id = $1';
   if (search) {
     baseParams.push(search);
-    where += ` AND (p.name ILIKE $2 OR COALESCE(p.description,'') ILIKE $2)`;
+    where += ` AND (p.name LIKE $2 OR COALESCE(p.description,'') LIKE $2)`;
   }
 
   const { rows: countRows } = await query(
-    `SELECT COUNT(*)::int AS n FROM products p ${where}`,
+    `SELECT COUNT(*) AS n FROM products p ${where}`,
     baseParams
   );
   const total = countRows[0]?.n ?? 0;
 
-  const listParams = [...baseParams, safeLimit, offset];
-  const limIdx = listParams.length - 1;
-  const offIdx = listParams.length;
   const { rows } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
             COALESCE(m.public_url, p.image_url) AS image_url
@@ -274,8 +276,8 @@ export async function adminListProductsPage(storeId, { page = 1, limit = 12, q }
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      ${where}
      ORDER BY p.id DESC
-     LIMIT $${limIdx} OFFSET $${offIdx}`,
-    listParams
+     LIMIT ${safeLimit} OFFSET ${offset}`,
+    baseParams
   );
 
   return {

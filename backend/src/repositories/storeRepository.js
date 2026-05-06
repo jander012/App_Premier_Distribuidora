@@ -55,14 +55,16 @@ export async function createStoreWithDefaults({ name, slug }) {
       suffix += 1;
       if (suffix > 500) throw new AppError(500, 'Não foi possível gerar slug único');
     }
-    const { rows: st } = await client.query(
-      `INSERT INTO stores (name, slug) VALUES ($1, $2) RETURNING id, name, slug, active, created_at`,
+    const result = await client.query(
+      `INSERT INTO stores (name, slug) VALUES ($1, $2)`,
       [name, finalSlug]
     );
+    const { rows: st } = await client.query(`SELECT id, name, slug, active, created_at FROM stores WHERE id = $1`, [
+      result.insertId,
+    ]);
     const store = st[0];
     await client.query(
-      `INSERT INTO store_configs (store_id, delivery_fee, fiscal_uf) VALUES ($1, 5.00, 'MT')
-       ON CONFLICT (store_id) DO NOTHING`,
+      `INSERT IGNORE INTO store_configs (store_id, delivery_fee, fiscal_uf) VALUES ($1, 5.00, 'MT')`,
       [store.id]
     );
     await client.query('COMMIT');

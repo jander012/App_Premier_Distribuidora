@@ -125,7 +125,7 @@ export function CartProvider({ children }) {
         await api.cartGet('/cart/me', { cartToken: existing });
         return existing;
       } catch (e) {
-        if (e.status === 401) {
+        if (e.status === 401 || e.status === 404) {
           clearCartAuth();
           setCartId(null);
         } else {
@@ -164,7 +164,7 @@ export function CartProvider({ children }) {
       setSummary(data);
       if (data?.cartId) setCartId(String(data.cartId));
     } catch (e) {
-      if (e.status === 401) {
+      if (e.status === 401 || e.status === 404) {
         clearCartAuth();
         setCartId(null);
         setSummary(null);
@@ -246,7 +246,7 @@ export function CartProvider({ children }) {
       try {
         await api.cartPost('/cart/items', body, { cartToken: token });
       } catch (e) {
-        if (e.status === 401) {
+        if (e.status === 401 || e.status === 404) {
           clearCartAuth();
           setCartId(null);
           token = await ensureCartToken();
@@ -276,6 +276,13 @@ export function CartProvider({ children }) {
     [refreshSummary]
   );
 
+  const clearLocalCart = useCallback(() => {
+    clearCartAuth();
+    setCartId(null);
+    setSummary(null);
+    setError(null);
+  }, []);
+
   const value = useMemo(
     () => ({
       cartId,
@@ -288,6 +295,7 @@ export function CartProvider({ children }) {
       addItem,
       updateItem,
       removeItem,
+      clearLocalCart,
       deliveryKm,
       setDeliveryKm,
       deliveryDest,
@@ -305,6 +313,7 @@ export function CartProvider({ children }) {
       addItem,
       updateItem,
       removeItem,
+      clearLocalCart,
       deliveryKm,
       setDeliveryKm,
       deliveryDest,

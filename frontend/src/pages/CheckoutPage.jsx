@@ -22,10 +22,16 @@ function mapsUrlFromPin(pin) {
   return `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
 }
 
+function applyIfPresent(setter, value) {
+  const s = String(value ?? '').trim();
+  if (s) setter(s);
+}
+
 export function CheckoutPage() {
   const nav = useNavigate();
   const { storeSlug } = useStore();
-  const { phone, setPhone, summary, deliveryKm, setDeliveryKm, deliveryPublic, setDeliveryDest } = useCart();
+  const { phone, setPhone, summary, deliveryKm, setDeliveryKm, deliveryPublic, setDeliveryDest, clearLocalCart } =
+    useCart();
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [submitErr, setSubmitErr] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -215,6 +221,19 @@ export function CheckoutPage() {
     }
   }
 
+  function fillAddressFromLocation(address) {
+    applyIfPresent(setStreet, address?.street);
+    applyIfPresent(setNumber, address?.number);
+    applyIfPresent(setNeighborhood, address?.neighborhood);
+    applyIfPresent(setZipCode, address?.zipCode);
+    const cityState = [address?.city, address?.state].map((x) => String(x || '').trim()).filter(Boolean).join(' - ');
+    if (cityState) {
+      setReference((prev) => prev || cityState);
+    } else if (address?.reference) {
+      setReference((prev) => prev || address.reference);
+    }
+  }
+
   async function submit(e) {
     e.preventDefault();
     setSubmitErr(null);
@@ -269,6 +288,7 @@ export function CheckoutPage() {
         orderBody.couponCode = appliedCoupon.code;
       }
       const res = await api.postOrder(orderBody);
+      clearLocalCart();
       nav(`/pedido/${res.order.id}`, { state: res });
     } catch (err) {
       setSubmitErr(err.message + (err.details?.missing ? ` — faltando: ${err.details.missing.join(', ')}` : ''));
@@ -450,6 +470,7 @@ export function CheckoutPage() {
               initialLat={savedAddrLat ?? sessionPinLat}
               initialLng={savedAddrLng ?? sessionPinLng}
               onChange={setDeliveryPin}
+              onAddressChange={fillAddressFromLocation}
             />
             {deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng) && (
               <div className="checkout-location-actions">

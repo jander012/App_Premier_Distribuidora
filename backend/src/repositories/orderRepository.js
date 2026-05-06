@@ -1,7 +1,7 @@
 import { query } from '../config/db.js';
 
 export async function createOrderRow(data) {
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO orders (
       store_id, customer_id, cart_id, status, subtotal, delivery_fee, total,
       payment_method_code, payment_meta,
@@ -9,9 +9,9 @@ export async function createOrderRow(data) {
       delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
       customer_full_name, customer_cpf, customer_email, customer_phone
     ) VALUES (
-      $1, $2, $3, 'received', $4, $5, $6, $7, $8::jsonb,
+      $1, $2, $3, 'received', $4, $5, $6, $7, $8,
       $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
-    ) RETURNING *`,
+    )`,
     [
       data.storeId,
       data.customerId,
@@ -35,6 +35,7 @@ export async function createOrderRow(data) {
       data.customer.phone,
     ]
   );
+  const { rows } = await query(`SELECT * FROM orders WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
@@ -42,7 +43,7 @@ export async function insertOrderItem(row) {
   await query(
     `INSERT INTO order_items
       (order_id, product_id, product_name, unit_price, quantity, note, options_snapshot, line_total)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
       row.orderId,
       row.productId,
@@ -113,7 +114,7 @@ export async function listOrdersAdmin({
   }
   if (phone && String(phone).replace(/\D/g, '')) {
     const digits = String(phone).replace(/\D/g, '');
-    sql += ` AND regexp_replace(customer_phone, '\\D', '', 'g') LIKE $${i++}`;
+    sql += ` AND REGEXP_REPLACE(customer_phone, '[^0-9]', '') LIKE $${i++}`;
     params.push(`%${digits}%`);
   }
   if (orderId != null && Number.isFinite(Number(orderId))) {
@@ -121,17 +122,16 @@ export async function listOrdersAdmin({
     params.push(Number(orderId));
   }
   if (fromDate) {
-    sql += ` AND created_at >= $${i++}::date`;
+    sql += ` AND created_at >= DATE($${i++})`;
     params.push(fromDate);
   }
   if (toDate) {
-    sql += ` AND created_at < ($${i++}::date + interval '1 day')`;
+    sql += ` AND created_at < DATE_ADD(DATE($${i++}), INTERVAL 1 DAY)`;
     params.push(toDate);
   }
-  const lim = i++;
-  const off = i++;
-  params.push(limit, offset);
-  sql += ` ORDER BY created_at ASC, id ASC LIMIT $${lim} OFFSET $${off}`;
+  const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const safeOffset = Math.max(Number(offset) || 0, 0);
+  sql += ` ORDER BY created_at ASC, id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
   const { rows } = await query(sql, params);
   return rows;
 }
@@ -145,7 +145,7 @@ export async function countOrdersAdmin({
   toDate,
 }) {
   const params = [storeId];
-  let sql = `SELECT COUNT(*)::int AS n FROM orders WHERE store_id = $1`;
+  let sql = `SELECT COUNT(*) AS n FROM orders WHERE store_id = $1`;
   let i = 2;
   if (status) {
     sql += ` AND status = $${i++}`;
@@ -153,7 +153,7 @@ export async function countOrdersAdmin({
   }
   if (phone && String(phone).replace(/\D/g, '')) {
     const digits = String(phone).replace(/\D/g, '');
-    sql += ` AND regexp_replace(customer_phone, '\\D', '', 'g') LIKE $${i++}`;
+    sql += ` AND REGEXP_REPLACE(customer_phone, '[^0-9]', '') LIKE $${i++}`;
     params.push(`%${digits}%`);
   }
   if (orderId != null && Number.isFinite(Number(orderId))) {
@@ -161,11 +161,11 @@ export async function countOrdersAdmin({
     params.push(Number(orderId));
   }
   if (fromDate) {
-    sql += ` AND created_at >= $${i++}::date`;
+    sql += ` AND created_at >= DATE($${i++})`;
     params.push(fromDate);
   }
   if (toDate) {
-    sql += ` AND created_at < ($${i++}::date + interval '1 day')`;
+    sql += ` AND created_at < DATE_ADD(DATE($${i++}), INTERVAL 1 DAY)`;
     params.push(toDate);
   }
   const { rows } = await query(sql, params);
@@ -179,15 +179,18 @@ export async function updateOrderStatus(orderId, status, storeId = null) {
     sql += ` AND store_id = $3`;
     params.push(storeId);
   }
-  sql += ` RETURNING *`;
-  const { rows } = await query(sql, params);
+  await query(sql, params);
+  const { rows } = await query(
+    `SELECT * FROM orders WHERE id = $1${storeId != null ? ' AND store_id = $2' : ''}`,
+    storeId != null ? [orderId, storeId] : [orderId]
+  );
   return rows[0];
 }
 
 export async function insertPayment(p) {
-  const { rows } = await query(
+  const result = await query(
     `INSERT INTO payments (order_id, method_code, amount, status, provider, provider_ref, meta)
-     VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb) RETURNING *`,
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
     [
       p.orderId,
       p.methodCode,
@@ -198,5 +201,6 @@ export async function insertPayment(p) {
       JSON.stringify(p.meta || {}),
     ]
   );
+  const { rows } = await query(`SELECT * FROM payments WHERE id = $1`, [result.insertId]);
   return rows[0];
 }

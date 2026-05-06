@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import pg from 'pg';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -19,15 +19,20 @@ const files = fs
   .filter((f) => f.endsWith('.sql'))
   .sort();
 
-const client = new pg.Client({ connectionString: url });
-await client.connect();
+const connection = await mysql.createConnection({ uri: url, multipleStatements: false });
 try {
   for (const file of files) {
     const sqlPath = path.join(migrationsDir, file);
     const sql = fs.readFileSync(sqlPath, 'utf8');
-    await client.query(sql);
+    const statements = sql
+      .split(/;\s*(?:\r?\n|$)/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    for (const statement of statements) {
+      await connection.query(statement);
+    }
     console.log('Migração aplicada:', file);
   }
 } finally {
-  await client.end();
+  await connection.end();
 }

@@ -23,20 +23,57 @@ function geoErrorMessage(code) {
   return 'Não foi possível usar a localização.';
 }
 
+function firstText(...values) {
+  for (const value of values) {
+    const s = String(value ?? '').trim();
+    if (s) return s;
+  }
+  return '';
+}
+
+function normalizeReverseAddress(data) {
+  const a = data?.address || {};
+  const street = firstText(a.road, a.pedestrian, a.residential, a.footway, a.path, a.cycleway);
+  const number = firstText(a.house_number);
+  const neighborhood = firstText(a.neighbourhood, a.suburb, a.quarter, a.city_district, a.village);
+  const zipCode = firstText(a.postcode);
+  const city = firstText(a.city, a.town, a.municipality, a.village);
+  const state = firstText(a.state);
+  const reference = firstText(data?.name);
+  return { street, number, neighborhood, zipCode, city, state, reference };
+}
+
+async function reverseGeocode(lat, lng) {
+  const url = new URL('https://nominatim.openstreetmap.org/reverse');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('lat', String(lat));
+  url.searchParams.set('lon', String(lng));
+  url.searchParams.set('accept-language', 'pt-BR,pt');
+  const res = await fetch(url.toString(), {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error('reverse_geocode_failed');
+  return normalizeReverseAddress(await res.json());
+}
+
 /**
  * @param {{
  *   polygon?: object|null,
  *   initialLat?: number|null,
  *   initialLng?: number|null,
  *   onChange: (v: {lat:number,lng:number}) => void,
+ *   onAddressChange?: (v: object) => void,
  * }} props
  */
-export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange }) {
+export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange, onAddressChange }) {
   const wrapRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
   const onChangeRef = useRef(onChange);
+  const onAddressChangeRef = useRef(onAddressChange);
   onChangeRef.current = onChange;
+  onAddressChangeRef.current = onAddressChange;
 
   const [geoHint, setGeoHint] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -44,6 +81,7 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
 
   useEffect(() => {
     if (!wrapRef.current || mapRef.current) return undefined;
+    let destroyed = false;
 
     const hasPolygon = polygon?.type === 'Polygon' && polygon.coordinates?.[0]?.length >= 3;
     const ring = hasPolygon ? polygon.coordinates[0] : null;
@@ -79,7 +117,8 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
     };
     marker.on('dragend', emit);
 
-    const applyGeoPosition = (lat, lng) => {
+    const applyGeoPosition = async (lat, lng, opts = {}) => {
+      const { lookupAddress = false } = opts;
       const m = mapRef.current;
       const mk = markerRef.current;
       if (!m || !mk) return;
@@ -88,6 +127,17 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
       m.flyTo([lat, lng], 17, { duration: 0.75 });
       onChangeRef.current({ lat, lng });
       setGeoHint(null);
+      if (!lookupAddress || !onAddressChangeRef.current) return;
+      try {
+        const address = await reverseGeocode(lat, lng);
+        if (destroyed) return;
+        onAddressChangeRef.current(address);
+        if (!address.street && !address.neighborhood && !address.zipCode) {
+          setGeoHint('Localização marcada, mas não encontramos rua/bairro para preencher automaticamente.');
+        }
+      } catch {
+        if (!destroyed) setGeoHint('Localização marcada. Não foi possível preencher o endereço automaticamente.');
+      }
     };
 
     const requestDevicePosition = (opts = {}) => {
@@ -101,11 +151,11 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
         setGeoLoading(true);
       }
       navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          if (!silent) setGeoLoading(false);
+        async (pos) => {
           const lat = pos.coords.latitude;
           const lng = pos.coords.longitude;
-          applyGeoPosition(lat, lng);
+          await applyGeoPosition(lat, lng, { lookupAddress: !silent });
+          if (!silent && !destroyed) setGeoLoading(false);
         },
         (err) => {
           if (!silent) {
@@ -120,7 +170,7 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
     const tryAutoGeoIfAlreadyPermitted = () => {
       if (hasSeedCoords || !navigator.geolocation) return;
       const ok = (pos) => {
-        applyGeoPosition(pos.coords.latitude, pos.coords.longitude);
+        void applyGeoPosition(pos.coords.latitude, pos.coords.longitude);
       };
       const noop = () => {};
       const tryQuery = async () => {
@@ -187,6 +237,7 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
     runGeoRef.current = runGeo;
 
     return () => {
+      destroyed = true;
       runGeoRef.current = () => {};
       map.remove();
       mapRef.current = null;
