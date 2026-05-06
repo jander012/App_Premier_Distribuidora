@@ -41,6 +41,10 @@ export const env = {
   publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:5173',
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',
   pixProvider: process.env.PIX_PROVIDER || 'stub',
+  linxProvider: process.env.LINX_PROVIDER || 'stub',
+  pickingoProvider: process.env.PICKINGO_PROVIDER || 'stub',
+  linxIntegrationEnabled: process.env.LINX_INTEGRATION_ENABLED === 'true',
+  pickingoIntegrationEnabled: process.env.PICKINGO_INTEGRATION_ENABLED === 'true',
   /** Origens permitidas (CORS). Vazio = apenas localhost:5173 em dev. */
   corsOrigins,
   /** Obrigatório para POST /whatsapp/* e POST /payments/* (exceto fluxo interno via serviço). */

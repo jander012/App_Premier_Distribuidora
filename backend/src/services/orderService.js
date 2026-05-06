@@ -8,6 +8,7 @@ import * as whatsappService from './whatsappService.js';
 import * as paymentService from './paymentService.js';
 import * as deliveryPricingService from './deliveryPricingService.js';
 import * as couponService from './couponService.js';
+import * as externalOrderIntegrationService from './externalOrderIntegrationService.js';
 import { normalizePhone } from '../utils/phone.js';
 import { AppError } from '../utils/AppError.js';
 
@@ -172,6 +173,8 @@ export async function createOrder(body, opts = {}) {
   }
 
   const items = await orderRepo.getOrderItems(order.id);
+
+  await externalOrderIntegrationService.dispatchOrderIntegrations(order, items);
 
   try {
     await whatsappService.sendOrderConfirmation(order, items);
