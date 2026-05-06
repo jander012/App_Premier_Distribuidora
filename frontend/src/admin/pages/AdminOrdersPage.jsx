@@ -8,6 +8,7 @@ const STATUSES = [
   { v: 'received', l: 'Pedido recebido' },
   { v: 'preparing', l: 'Em preparo' },
   { v: 'out_for_delivery', l: 'Saiu para entrega' },
+  { v: 'delivered_pending_confirmation', l: 'Aguardando confirmação' },
   { v: 'delivered', l: 'Entregue' },
   { v: 'cancelled', l: 'Cancelado' },
 ];

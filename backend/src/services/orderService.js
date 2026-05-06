@@ -9,8 +9,10 @@ import * as paymentService from './paymentService.js';
 import * as deliveryPricingService from './deliveryPricingService.js';
 import * as couponService from './couponService.js';
 import * as externalOrderIntegrationService from './externalOrderIntegrationService.js';
+import { env } from '../config/env.js';
 import { normalizePhone } from '../utils/phone.js';
 import { AppError } from '../utils/AppError.js';
+import crypto from 'crypto';
 
 export async function createOrder(body, opts = {}) {
   const phone =
@@ -228,16 +230,32 @@ export async function listByPhone(rawPhone, storeId = null) {
 }
 
 export async function updateStatus(orderId, status, { notify = true, storeId = null } = {}) {
-  const allowed = ['received', 'preparing', 'out_for_delivery', 'delivered', 'cancelled'];
+  const allowed = ['received', 'preparing', 'out_for_delivery', 'delivered_pending_confirmation', 'delivered', 'cancelled'];
   if (!allowed.includes(status)) throw new AppError(400, 'Status inválido');
   const current = await orderRepo.getOrderById(orderId);
   if (!current) throw new AppError(404, 'Pedido não encontrado');
   if (storeId != null && current.store_id !== storeId) {
     throw new AppError(403, 'Pedido de outra loja');
   }
-  const order = await orderRepo.updateOrderStatus(orderId, status, storeId);
+  let order = await orderRepo.updateOrderStatus(orderId, status, storeId);
   if (!order) throw new AppError(404, 'Pedido não encontrado');
   await orderRepo.addStatusHistory(orderId, status);
+  if (status === 'delivered_pending_confirmation') {
+    const token = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+    order = await orderRepo.setDeliveryConfirmationToken(orderId, token, expiresAt);
+    const base = env.publicMenuUrl.replace(/\/$/, '');
+    const confirmationUrl = `${base}/confirmar-entrega/${token}`;
+    if (notify) {
+      try {
+        await whatsappService.sendDeliveryConfirmationRequest(order, confirmationUrl);
+      } catch (e) {
+        // eslint-disable-next-line no-console
+        console.error('WhatsApp confirmação entrega:', e.message);
+      }
+    }
+    return order;
+  }
   if (notify) {
     try {
       await whatsappService.sendStatusUpdate(order);
@@ -247,4 +265,56 @@ export async function updateStatus(orderId, status, { notify = true, storeId = n
     }
   }
   return order;
+}
+
+export async function getDeliveryConfirmation(token) {
+  const safe = String(token || '').trim();
+  if (!safe) throw new AppError(400, 'Token inválido');
+  const order = await orderRepo.getOrderByDeliveryConfirmationToken(safe);
+  if (!order) throw new AppError(404, 'Confirmação não encontrada');
+  const expired =
+    order.delivery_confirmation_expires_at != null &&
+    new Date(order.delivery_confirmation_expires_at).getTime() < Date.now();
+  return {
+    order: {
+      id: order.id,
+      status: order.status,
+      total: Number(order.total),
+      customerName: order.customer_full_name,
+      delivery: {
+        street: order.delivery_street,
+        number: order.delivery_number,
+        neighborhood: order.delivery_neighborhood,
+      },
+      expired,
+      confirmedAt: order.delivery_confirmed_at,
+    },
+  };
+}
+
+export async function confirmDelivery(token) {
+  const safe = String(token || '').trim();
+  if (!safe) throw new AppError(400, 'Token inválido');
+  const before = await orderRepo.getOrderByDeliveryConfirmationToken(safe);
+  if (!before) throw new AppError(404, 'Confirmação não encontrada');
+  if (before.status === 'delivered') return { order: before, alreadyConfirmed: true };
+  if (before.status !== 'delivered_pending_confirmation') {
+    throw new AppError(400, 'Este pedido ainda não está aguardando confirmação de entrega');
+  }
+  if (
+    before.delivery_confirmation_expires_at != null &&
+    new Date(before.delivery_confirmation_expires_at).getTime() < Date.now()
+  ) {
+    throw new AppError(400, 'Link de confirmação expirado');
+  }
+  await orderRepo.confirmDeliveryByToken(safe);
+  const order = await orderRepo.getOrderById(before.id);
+  await orderRepo.addStatusHistory(before.id, 'delivered', 'Confirmado pelo cliente');
+  try {
+    await whatsappService.sendStatusUpdate(order);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('WhatsApp entrega confirmada:', e.message);
+  }
+  return { order, alreadyConfirmed: false };
 }

@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import { getLinxProvider } from '../integrations/linx/index.js';
 import { getPickingoProvider } from '../integrations/pickingo/index.js';
 import * as integrationRepo from '../repositories/integrationRepository.js';
+import * as settingsRepo from '../repositories/settingsRepository.js';
 
 function buildOrderPayload(order, items) {
   return {
@@ -115,13 +116,16 @@ async function sendWithTracking({ providerName, action, order, items, enabled, p
 }
 
 export async function dispatchOrderIntegrations(order, items) {
+  const config = await settingsRepo.getStoreConfig(order.store_id);
+  const linxEnabled = env.linxIntegrationEnabled && Boolean(config?.linx_integration_enabled);
+  const pickingoEnabled = env.pickingoIntegrationEnabled && Boolean(config?.pickingo_integration_enabled);
   const tasks = [
     sendWithTracking({
       providerName: 'linx_pos',
       action: 'send_order',
       order,
       items,
-      enabled: env.linxIntegrationEnabled,
+      enabled: linxEnabled,
       providerCall: (payload) => getLinxProvider().sendOrder({ order, items, payload }),
     }),
     sendWithTracking({
@@ -129,7 +133,7 @@ export async function dispatchOrderIntegrations(order, items) {
       action: 'create_delivery',
       order,
       items,
-      enabled: env.pickingoIntegrationEnabled,
+      enabled: pickingoEnabled,
       providerCall: (payload) => getPickingoProvider().createDelivery({ order, items, payload }),
     }),
   ];

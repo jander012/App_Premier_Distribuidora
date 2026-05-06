@@ -21,6 +21,8 @@ export async function updateStoreConfig(storeId, patch) {
     'whatsapp_welcome_template',
     'whatsapp_order_confirm_template',
     'whatsapp_status_template',
+    'linx_integration_enabled',
+    'pickingo_integration_enabled',
   ];
   const sets = [];
   const vals = [];

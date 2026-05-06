@@ -57,6 +57,27 @@ export async function patchStatus(req, res, next) {
   }
 }
 
+export async function getDeliveryConfirmation(req, res, next) {
+  try {
+    const result = await orderService.getDeliveryConfirmation(req.params.token);
+    res.json(result);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function confirmDelivery(req, res, next) {
+  try {
+    const result = await orderService.confirmDelivery(req.params.token);
+    res.json({
+      order: formatOrder(result.order),
+      alreadyConfirmed: result.alreadyConfirmed,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export function formatOrder(o) {
   return {
     id: o.id,
@@ -89,6 +110,7 @@ export function formatOrder(o) {
       phone: o.customer_phone,
     },
     createdAt: o.created_at,
+    deliveryConfirmedAt: o.delivery_confirmed_at,
   };
 }
 

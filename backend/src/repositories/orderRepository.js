@@ -187,6 +187,42 @@ export async function updateOrderStatus(orderId, status, storeId = null) {
   return rows[0];
 }
 
+export async function setDeliveryConfirmationToken(orderId, token, expiresAt) {
+  await query(
+    `UPDATE orders
+     SET delivery_confirmation_token = $2,
+         delivery_confirmation_expires_at = $3,
+         updated_at = now()
+     WHERE id = $1`,
+    [orderId, token, expiresAt]
+  );
+  const { rows } = await query(`SELECT * FROM orders WHERE id = $1`, [orderId]);
+  return rows[0] || null;
+}
+
+export async function getOrderByDeliveryConfirmationToken(token) {
+  const { rows } = await query(
+    `SELECT * FROM orders WHERE delivery_confirmation_token = $1`,
+    [token]
+  );
+  return rows[0] || null;
+}
+
+export async function confirmDeliveryByToken(token) {
+  await query(
+    `UPDATE orders
+     SET status = 'delivered',
+         delivery_confirmed_at = now(),
+         delivery_confirmation_token = NULL,
+         delivery_confirmation_expires_at = NULL,
+         updated_at = now()
+     WHERE delivery_confirmation_token = $1
+       AND status = 'delivered_pending_confirmation'
+       AND (delivery_confirmation_expires_at IS NULL OR delivery_confirmation_expires_at > now())`,
+    [token]
+  );
+}
+
 export async function insertPayment(p) {
   const result = await query(
     `INSERT INTO payments (order_id, method_code, amount, status, provider, provider_ref, meta)

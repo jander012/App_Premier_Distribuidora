@@ -28,6 +28,13 @@ function apiProxyTarget(mode, cwd) {
   return raw;
 }
 
+function appBase(mode, cwd) {
+  const e = loadEnv(mode, cwd, '');
+  const raw = (e.VITE_BASE_URL || '/').trim();
+  if (!raw || raw === '.') return '/';
+  return raw.endsWith('/') ? raw : `${raw}/`;
+}
+
 const apiProxy = (target) => ({
   '/api': {
     target,
@@ -46,9 +53,11 @@ const apiProxy = (target) => ({
 });
 
 export default defineConfig(({ mode }) => {
-  const target = apiProxyTarget(mode, process.cwd());
+  const cwd = process.cwd();
+  const target = apiProxyTarget(mode, cwd);
   return {
     plugins: [react()],
+    base: appBase(mode, cwd),
     server: {
       port: 5173,
       proxy: apiProxy(target),
