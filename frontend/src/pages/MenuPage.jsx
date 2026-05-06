@@ -49,34 +49,50 @@ export function MenuPage() {
   }, [categories, products]);
 
   return (
-    <div>
-      <h1 className="page-title">Cardápio</h1>
-      <p className="muted" style={{ marginTop: '-0.5rem' }}>
-        Toque no produto para ver detalhes e opcionais.
-      </p>
+    <div className="menu-page">
+      <section className="menu-hero">
+        <div>
+          <span className="menu-hero__eyebrow">Delivery Premier</span>
+          <h1 className="page-title">Cardápio</h1>
+          <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+        </div>
+        <div className="menu-hero__meta">
+          <strong>Aberto</strong>
+          <span>Entrega rápida</span>
+        </div>
+      </section>
+      {byCat.length > 0 && (
+        <div className="category-strip" aria-label="Categorias">
+          {byCat.map((cat) => (
+            <a key={cat.id} href={`#cat-${cat.id}`} className="category-pill">
+              {cat.name}
+            </a>
+          ))}
+        </div>
+      )}
       {err && <p className="err">{err}</p>}
       {byCat.map((cat) => (
-        <section key={cat.id}>
+        <section key={cat.id} id={`cat-${cat.id}`} className="menu-section">
           <div className="section-label">{cat.name}</div>
-          {cat.items.map((p) => (
-            <Link key={p.id} to={`/produto/${p.id}`} className={`card product-row ${!p.available ? 'unavailable' : ''}`}>
-              {p.image_url ? (
-                <img src={p.image_url} alt="" loading="lazy" />
-              ) : (
-                <div style={{ width: 72, height: 72, borderRadius: 12, background: '#334155' }} />
-              )}
-              <div style={{ flex: 1 }}>
-                <h3>{p.name}</h3>
-                <p className="muted" style={{ margin: 0, fontSize: '0.85rem', lineHeight: 1.35 }}>
-                  {p.description}
-                </p>
-                <div className="price" style={{ marginTop: '0.35rem' }}>
-                  R$ {Number(p.price).toFixed(2)}
-                  {!p.available && <span className="muted"> — indisponível</span>}
+          <div className="product-grid">
+            {cat.items.map((p) => (
+              <Link key={p.id} to={`/produto/${p.id}`} className={`card product-row ${!p.available ? 'unavailable' : ''}`}>
+                {p.image_url ? (
+                  <img src={p.image_url} alt="" loading="lazy" />
+                ) : (
+                  <div className="product-placeholder" />
+                )}
+                <div className="product-row__body">
+                  <h3>{p.name}</h3>
+                  {p.description && <p className="muted">{p.description}</p>}
+                  <div className="price">
+                    R$ {Number(p.price).toFixed(2)}
+                    {!p.available && <span className="muted"> — indisponível</span>}
+                  </div>
                 </div>
-              </div>
-            </Link>
-          ))}
+              </Link>
+            ))}
+          </div>
         </section>
       ))}
     </div>

@@ -66,6 +66,8 @@ export async function getCartSummary(
       id: row.id,
       productId: row.product_id,
       name: row.product_name,
+      description: row.product_description,
+      imageUrl: row.product_image_url,
       quantity: row.quantity,
       note: row.note,
       optionIds: row.option_ids,

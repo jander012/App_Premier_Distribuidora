@@ -22,9 +22,16 @@ export async function linkCartToCustomer(cartId, customerId) {
 
 export async function listCartItems(cartId) {
   const { rows } = await query(
-    `SELECT ci.*, p.name AS product_name, p.price AS base_price, p.available, p.store_id AS product_store_id
+    `SELECT ci.*,
+            p.name AS product_name,
+            p.description AS product_description,
+            p.price AS base_price,
+            p.available,
+            p.store_id AS product_store_id,
+            COALESCE(m.public_url, p.image_url) AS product_image_url
      FROM cart_items ci
      JOIN products p ON p.id = ci.product_id
+     LEFT JOIN media_assets m ON m.id = p.image_asset_id
      WHERE ci.cart_id = $1
      ORDER BY ci.id`,
     [cartId]

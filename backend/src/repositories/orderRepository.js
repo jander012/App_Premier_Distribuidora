@@ -6,11 +6,11 @@ export async function createOrderRow(data) {
       store_id, customer_id, cart_id, status, subtotal, delivery_fee, total,
       payment_method_code, payment_meta,
       delivery_street, delivery_number, delivery_neighborhood, delivery_zip_code,
-      delivery_complement, delivery_reference,
+      delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
       customer_full_name, customer_cpf, customer_email, customer_phone
     ) VALUES (
       $1, $2, $3, 'received', $4, $5, $6, $7, $8::jsonb,
-      $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+      $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
     ) RETURNING *`,
     [
       data.storeId,
@@ -27,6 +27,8 @@ export async function createOrderRow(data) {
       data.delivery.zipCode,
       data.delivery.complement || null,
       data.delivery.reference || null,
+      data.delivery.latitude ?? null,
+      data.delivery.longitude ?? null,
       data.customer.fullName,
       data.customer.cpf,
       data.customer.email,
@@ -68,7 +70,15 @@ export async function getOrderById(id) {
 }
 
 export async function getOrderItems(orderId) {
-  const { rows } = await query(`SELECT * FROM order_items WHERE order_id = $1 ORDER BY id`, [orderId]);
+  const { rows } = await query(
+    `SELECT oi.*, COALESCE(m.public_url, p.image_url) AS product_image_url
+     FROM order_items oi
+     LEFT JOIN products p ON p.id = oi.product_id
+     LEFT JOIN media_assets m ON m.id = p.image_asset_id
+     WHERE oi.order_id = $1
+     ORDER BY oi.id`,
+    [orderId]
+  );
   return rows;
 }
 

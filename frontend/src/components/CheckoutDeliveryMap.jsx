@@ -25,7 +25,7 @@ function geoErrorMessage(code) {
 
 /**
  * @param {{
- *   polygon: object,
+ *   polygon?: object|null,
  *   initialLat?: number|null,
  *   initialLng?: number|null,
  *   onChange: (v: {lat:number,lng:number}) => void,
@@ -45,7 +45,8 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
   useEffect(() => {
     if (!wrapRef.current || mapRef.current) return undefined;
 
-    const ring = polygon?.coordinates?.[0];
+    const hasPolygon = polygon?.type === 'Polygon' && polygon.coordinates?.[0]?.length >= 3;
+    const ring = hasPolygon ? polygon.coordinates[0] : null;
     const fallback = ring?.length ? ringBBoxCenterLatLng(ring) : [-15.78, -47.93];
     const savedLat = Number.isFinite(Number(initialLat)) ? Number(initialLat) : null;
     const savedLng = Number.isFinite(Number(initialLng)) ? Number(initialLng) : null;
@@ -62,9 +63,11 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
       maxZoom: 19,
     }).addTo(map);
 
-    const polyLayer = L.geoJSON(polygon, {
-      style: { color: '#c2410c', weight: 2, fillOpacity: 0.08 },
-    }).addTo(map);
+    const polyLayer = hasPolygon
+      ? L.geoJSON(polygon, {
+          style: { color: '#171717', weight: 2, fillColor: '#fbbc23', fillOpacity: 0.12 },
+        }).addTo(map)
+      : null;
 
     const marker = L.marker([fallback[0], fallback[1]], { draggable: true }).addTo(map);
     markerRef.current = marker;
@@ -138,22 +141,33 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange 
     };
 
     const layoutMap = () => {
+      let shouldEmit = false;
       map.invalidateSize();
       try {
-        const b = polyLayer.getBounds();
-        map.fitBounds(b.pad(0.1));
-        if (savedLat != null && savedLng != null) {
+        if (polyLayer) {
+          const b = polyLayer.getBounds();
+          map.fitBounds(b.pad(0.1));
+          if (savedLat != null && savedLng != null) {
+            marker.setLatLng([savedLat, savedLng]);
+          } else {
+            marker.setLatLng(b.getCenter());
+          }
+          shouldEmit = true;
+        } else if (savedLat != null && savedLng != null) {
           marker.setLatLng([savedLat, savedLng]);
+          map.setView([savedLat, savedLng], 16);
+          shouldEmit = true;
         } else {
-          marker.setLatLng(b.getCenter());
+          map.setView([fallback[0], fallback[1]], 14);
         }
       } catch {
         map.setView([fallback[0], fallback[1]], 14);
         if (savedLat != null && savedLng != null) {
           marker.setLatLng([savedLat, savedLng]);
+          shouldEmit = true;
         }
       }
-      emit();
+      if (shouldEmit) emit();
     };
 
     map.whenReady(() => {

@@ -16,6 +16,11 @@ export function Layout({ children }) {
       : storesCatalog.length > 1
         ? storesCatalog
         : [];
+  const currentStore =
+    storesCatalog.find((s) => s.slug === storeSlug) ||
+    linkedStores?.find((s) => s.slug === storeSlug) ||
+    storeOptions[0];
+  const brandName = currentStore?.name || 'Premier Distribuidora';
 
   return (
     <div className={`app-shell${isAdmin ? ' app-shell--admin' : ''}`}>
@@ -23,8 +28,13 @@ export function Layout({ children }) {
         <header className="topbar">
           <div className="topbar-left">
             <Link to="/" className="brand">
-              Delivery
+              <span className="brand-mark">P</span>
+              <span>{brandName}</span>
             </Link>
+            <div className="delivery-chip">
+              <span>Entrega</span>
+              <strong>Agora</strong>
+            </div>
             {storeOptions.length > 0 && (
               <div className="topbar-store">
                 <label htmlFor="store-select">Loja</label>
@@ -45,7 +55,24 @@ export function Layout({ children }) {
           </div>
           <nav className="nav-actions">
             <Link to="/carrinho" className="cart-link">
-              Carrinho
+              <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6.2 8h11.6l-.8 11H7L6.2 8Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+                <path
+                  d="M9 8a3 3 0 0 1 6 0"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="2"
+                />
+              </svg>
+              <span>Carrinho</span>
               {count > 0 && <span className="badge">{count}</span>}
             </Link>
           </nav>

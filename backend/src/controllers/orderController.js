@@ -75,6 +75,12 @@ export function formatOrder(o) {
       zipCode: o.delivery_zip_code,
       complement: o.delivery_complement,
       reference: o.delivery_reference,
+      latitude: o.delivery_latitude != null ? Number(o.delivery_latitude) : null,
+      longitude: o.delivery_longitude != null ? Number(o.delivery_longitude) : null,
+      locationUrl:
+        o.delivery_latitude != null && o.delivery_longitude != null
+          ? `https://www.google.com/maps?q=${Number(o.delivery_latitude)},${Number(o.delivery_longitude)}`
+          : null,
     },
     customer: {
       fullName: o.customer_full_name,
@@ -91,6 +97,7 @@ export function formatItem(i) {
     id: i.id,
     productId: i.product_id,
     productName: i.product_name,
+    imageUrl: i.product_image_url,
     unitPrice: Number(i.unit_price),
     quantity: i.quantity,
     note: i.note,

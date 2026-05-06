@@ -89,11 +89,11 @@ export async function createOrder(body, opts = {}) {
         store_id, customer_id, cart_id, status, subtotal, delivery_fee, coupon_id, coupon_discount, total,
         payment_method_code, payment_meta,
         delivery_street, delivery_number, delivery_neighborhood, delivery_zip_code,
-        delivery_complement, delivery_reference,
+        delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
         customer_full_name, customer_cpf, customer_email, customer_phone
       ) VALUES (
         $1, $2, $3, 'received', $4, $5, $6, $7, $8, $9, $10::jsonb,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
+        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
       ) RETURNING *`,
       [
         summary.storeId,
@@ -112,6 +112,8 @@ export async function createOrder(body, opts = {}) {
         address.zip_code,
         address.complement || null,
         address.reference_note || null,
+        deliveryLat != null && deliveryLat !== '' ? Number(deliveryLat) : null,
+        deliveryLng != null && deliveryLng !== '' ? Number(deliveryLng) : null,
         customer.full_name,
         customer.cpf,
         customer.email,

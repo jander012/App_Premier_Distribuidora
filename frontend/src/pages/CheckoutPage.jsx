@@ -17,6 +17,11 @@ function checkoutPinStorageKey(storeSlug) {
   return `delivery_checkout_pin:${storeSlug || 'principal'}`;
 }
 
+function mapsUrlFromPin(pin) {
+  if (!pin || !Number.isFinite(pin.lat) || !Number.isFinite(pin.lng)) return '';
+  return `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+}
+
 export function CheckoutPage() {
   const nav = useNavigate();
   const { storeSlug } = useStore();
@@ -280,31 +285,67 @@ export function CheckoutPage() {
       <h1 className="page-title">Checkout</h1>
 
       {summary && (
-        <div className="card" style={{ marginBottom: '1rem' }}>
-          <div className="row-between">
-            <span className="muted">Subtotal</span>
-            <span>R$ {Number(summary.subtotal).toFixed(2)}</span>
-          </div>
-          <div className="row-between">
-            <span className="muted">Entrega</span>
-            <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
-          </div>
-          {appliedCoupon && appliedCoupon.discountAmount > 0 && (
-            <div className="row-between" style={{ color: 'var(--accent, #16a34a)' }}>
-              <span>Cupom ({appliedCoupon.code})</span>
-              <span>− R$ {Number(appliedCoupon.discountAmount).toFixed(2)}</span>
+        <section className="card checkout-receipt">
+          <div className="order-receipt__head">
+            <div>
+              <span className="order-receipt__eyebrow">Resumo do pedido</span>
+              <h2>Seu cupom</h2>
             </div>
-          )}
-          <div className="row-between" style={{ marginTop: '0.35rem', fontWeight: 700 }}>
-            <span>Total</span>
-            <span className="price">
-              R${' '}
-              {Number(
-                Math.max(0, Number(summary.subtotal) + Number(summary.deliveryFee) - (appliedCoupon?.discountAmount || 0))
-              ).toFixed(2)}
-            </span>
+            <span className="pill">{summary.items?.reduce((a, i) => a + i.quantity, 0) || 0} itens</span>
           </div>
-        </div>
+
+          <div className="order-receipt__items">
+            {(summary.items || []).map((line) => (
+              <div key={line.id} className="order-receipt-item">
+                {line.imageUrl ? (
+                  <img className="order-receipt-item__image" src={line.imageUrl} alt="" loading="lazy" />
+                ) : (
+                  <div className="order-receipt-item__image order-receipt-item__image--placeholder" />
+                )}
+                <div className="order-receipt-item__body">
+                  <strong>{line.name}</strong>
+                  {line.description && <span>{line.description}</span>}
+                  <span>Valor unitário: R$ {Number(line.unitPrice).toFixed(2)}</span>
+                  {line.options?.length > 0 && <span>Opcionais: {line.options.map((o) => o.name).join(', ')}</span>}
+                  {line.note && <span>Obs: {line.note}</span>}
+                </div>
+                <div className="order-receipt-item__totals">
+                  <span>{line.quantity}x</span>
+                  <strong>R$ {Number(line.lineTotal).toFixed(2)}</strong>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="order-receipt__summary">
+            <div className="row-between">
+              <span>Subtotal</span>
+              <span>R$ {Number(summary.subtotal).toFixed(2)}</span>
+            </div>
+            <div className="row-between">
+              <span>Taxa de entrega</span>
+              <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
+            </div>
+            {appliedCoupon && appliedCoupon.discountAmount > 0 && (
+              <div className="row-between">
+                <span>Cupom ({appliedCoupon.code})</span>
+                <span>- R$ {Number(appliedCoupon.discountAmount).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="row-between order-receipt__total">
+              <span>Total</span>
+              <span>
+                R${' '}
+                {Number(
+                  Math.max(
+                    0,
+                    Number(summary.subtotal) + Number(summary.deliveryFee) - (appliedCoupon?.discountAmount || 0)
+                  )
+                ).toFixed(2)}
+              </span>
+            </div>
+          </div>
+        </section>
       )}
 
       {!sessionReady && (
@@ -396,24 +437,38 @@ export function CheckoutPage() {
             <input value={reference} onChange={(e) => setReference(e.target.value)} />
           </div>
 
-          {deliveryPublic?.deliveryAreaPolygon?.type === 'Polygon' &&
-            deliveryPublic.deliveryAreaPolygon.coordinates?.[0]?.length >= 3 && (
-              <div className="field" style={{ marginTop: '0.75rem' }}>
-                <div className="section-label">Local da entrega no mapa *</div>
-                <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
-                  Guardamos o último ponto neste aparelho (por loja). Se o navegador já tiver permissão de
-                  localização, o mapa tenta ir para onde você está. Ajuste o marcador se precisar; só aceitamos
-                  pedidos dentro da área destacada.
-                </p>
-                <CheckoutDeliveryMap
-                  key={`dm-${savedAddrLat ?? sessionPinLat ?? 'x'}-${savedAddrLng ?? sessionPinLng ?? 'y'}`}
-                  polygon={deliveryPublic.deliveryAreaPolygon}
-                  initialLat={savedAddrLat ?? sessionPinLat}
-                  initialLng={savedAddrLng ?? sessionPinLng}
-                  onChange={setDeliveryPin}
-                />
+          <div className="field" style={{ marginTop: '0.75rem' }}>
+            <div className="section-label">Localização da entrega{hasDeliveryPolygon ? ' *' : ''}</div>
+            <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
+              Use a localização atual para enviar o ponto exato da entrega junto com o pedido. Ajuste o marcador se
+              precisar.
+              {hasDeliveryPolygon ? ' Só aceitamos pedidos dentro da área destacada.' : ''}
+            </p>
+            <CheckoutDeliveryMap
+              key={`dm-${savedAddrLat ?? sessionPinLat ?? 'x'}-${savedAddrLng ?? sessionPinLng ?? 'y'}-${hasDeliveryPolygon ? 'poly' : 'free'}`}
+              polygon={hasDeliveryPolygon ? deliveryPublic.deliveryAreaPolygon : null}
+              initialLat={savedAddrLat ?? sessionPinLat}
+              initialLng={savedAddrLng ?? sessionPinLng}
+              onChange={setDeliveryPin}
+            />
+            {deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng) && (
+              <div className="checkout-location-actions">
+                <a
+                  className="btn btn-ghost"
+                  href={`https://wa.me/?text=${encodeURIComponent(
+                    `Minha localização para entrega: ${mapsUrlFromPin(deliveryPin)}`
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  Enviar localização pelo WhatsApp
+                </a>
+                <a className="muted" href={mapsUrlFromPin(deliveryPin)} target="_blank" rel="noreferrer">
+                  Abrir no mapa
+                </a>
               </div>
             )}
+          </div>
 
           {taxaUsaRotaNoMapa && (
             <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0, marginBottom: 0 }}>

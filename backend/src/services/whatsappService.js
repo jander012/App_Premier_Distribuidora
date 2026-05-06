@@ -26,6 +26,10 @@ export function buildMenuLinkMessage(phoneDigits) {
 
 export function buildOrderConfirmationMessage(order, items) {
   const pay = PAY_LABEL[order.payment_method_code] || order.payment_method_code;
+  const hasLocation = order.delivery_latitude != null && order.delivery_longitude != null;
+  const locationUrl = hasLocation
+    ? `https://www.google.com/maps?q=${Number(order.delivery_latitude)},${Number(order.delivery_longitude)}`
+    : null;
   const lines = items
     .map(
       (i) =>
@@ -53,9 +57,13 @@ export function buildOrderConfirmationMessage(order, items) {
     `Taxa entrega: R$ ${Number(order.delivery_fee).toFixed(2)}\n` +
     `*Total: R$ ${Number(order.total).toFixed(2)}*\n` +
     `Pagamento: ${pay}${extra}\n\n` +
+    `Cliente: ${order.customer_full_name}\n` +
+    `Telefone: ${order.customer_phone}\n\n` +
     `Entrega:\n${order.delivery_street}, ${order.delivery_number} — ${order.delivery_neighborhood}\n` +
     `CEP ${order.delivery_zip_code}\n` +
     (order.delivery_complement ? `${order.delivery_complement}\n` : '') +
+    (order.delivery_reference ? `Referência: ${order.delivery_reference}\n` : '') +
+    (locationUrl ? `Localização: ${locationUrl}\n` : '') +
     `\nStatus: ${STATUS_LABEL[order.status] || order.status}\n` +
     `Obrigado pela preferência!`
   );

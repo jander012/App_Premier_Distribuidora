@@ -33,10 +33,15 @@ export function CartPage() {
       ) : (
         <>
           {items.map((line) => (
-            <div key={line.id} className="card">
-              <div className="row-between" style={{ alignItems: 'flex-start' }}>
-                <div>
-                  <strong>{line.name}</strong>
+            <div key={line.id} className="card cart-item-card">
+              <div className="cart-item-card__main">
+                {line.imageUrl ? (
+                  <img className="cart-item-card__image" src={line.imageUrl} alt="" loading="lazy" />
+                ) : (
+                  <div className="cart-item-card__image cart-item-card__image--placeholder" />
+                )}
+                <div className="cart-item-card__body">
+                  <strong className="cart-item-card__name">{line.name}</strong>
                   {line.note && (
                     <div className="muted" style={{ fontSize: '0.85rem' }}>
                       Obs: {line.note}
@@ -51,11 +56,11 @@ export function CartPage() {
                     R$ {Number(line.lineTotal).toFixed(2)}
                   </div>
                 </div>
-                <button type="button" className="btn btn-ghost" style={{ width: 'auto', padding: '0.35rem 0.6rem' }} onClick={() => removeItem(line.id)}>
+                <button type="button" className="btn btn-ghost cart-item-card__remove" onClick={() => removeItem(line.id)}>
                   Remover
                 </button>
               </div>
-              <div className="qty" style={{ marginTop: '0.75rem' }}>
+              <div className="qty cart-item-card__qty">
                 <button
                   type="button"
                   onClick={() => updateItem(line.id, { quantity: Math.max(1, line.quantity - 1) })}
