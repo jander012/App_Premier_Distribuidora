@@ -35,6 +35,7 @@ import { requireSuperAdmin } from './middlewares/requireSuperAdmin.js';
 import * as adminPlatformController from './controllers/adminPlatformController.js';
 import * as healthDbController from './controllers/healthDbController.js';
 
+
 const app = express();
 app.set('trust proxy', env.trustProxy);
 
