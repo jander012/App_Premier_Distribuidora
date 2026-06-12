@@ -14,13 +14,9 @@ const corsOrigins = corsRaw
   .filter(Boolean);
 
 function parseDatabaseConfig() {
-  // if (process.env.DATABASE_URL) {
-  //   return { uri: process.env.DATABASE_URL };
-  // }
-
-  const host = 'srv1435.hstgr.io'; // process.env.DB_HOST || 'localhost';
-  const user ='u392323297_delivery';//process.env.DB_USER;
-  const database = 'u392323297_delivery_db';//process.env.DB_DATABASE;
+  const host = process.env.DB_HOST || 'localhost';
+  const user = process.env.DB_USER;
+  const database = process.env.DB_DATABASE;
 
   if (!host || !user || !database) {
     return null;
@@ -30,7 +26,7 @@ function parseDatabaseConfig() {
     host,
     port: Number(process.env.DB_PORT) || 3306,
     user,
-    password: '$L4Bm+fp',//process.env.DB_PASSWORD || '',
+    password: process.env.DB_PASSWORD || '',
     database,
   };
 }

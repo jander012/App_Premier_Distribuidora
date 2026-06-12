@@ -2,7 +2,7 @@
 
 Aplicacao web para cardapio digital, pedidos de delivery e painel administrativo da Premier Distribuidora.
 
-O projeto e um monorepo com frontend React/Vite, backend Node.js/Express e banco MySQL. O fluxo principal cobre exibicao de produtos, carrinho, checkout com autenticacao por telefone, criacao de pedidos, acompanhamento pelo cliente e gestao operacional pelo painel administrativo.
+O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o frontend React e a API em `/api/*`. A estrutura antiga de `frontend/` e `backend/` foi preservada para reaproveitar telas, services, repositories e scripts de banco. O fluxo principal cobre exibicao de produtos, carrinho, checkout com autenticacao por telefone, criacao de pedidos, acompanhamento pelo cliente e gestao operacional pelo painel administrativo.
 
 ## Sumario
 
@@ -58,6 +58,12 @@ O projeto e um monorepo com frontend React/Vite, backend Node.js/Express e banco
 
 - MySQL 8.4 via Docker Compose.
 
+### Aplicacao unificada
+
+- Next.js servindo o app em uma unica porta.
+- Frontend atual carregado como aplicacao client-side.
+- API exposta por rotas Next em `/api/*`, reaproveitando controllers, middlewares, services e repositories do backend.
+
 ## Estrutura do projeto
 
 ```text
@@ -109,7 +115,13 @@ O projeto e um monorepo com frontend React/Vite, backend Node.js/Express e banco
 
 Os comandos abaixo assumem que voce esta na raiz do repositorio.
 
-1. Instale as dependencias:
+1. Instale as dependencias da aplicacao unificada:
+
+```bash
+npm install
+```
+
+Se ainda for rodar os projetos antigos separadamente, instale tambem as dependencias internas:
 
 ```bash
 npm --prefix backend install
@@ -122,7 +134,7 @@ npm --prefix frontend install
 docker compose up -d mysql
 ```
 
-3. Crie `backend/.env`:
+3. No modo unificado, crie `.env` na raiz a partir de `.env.example`. No modo antigo separado, crie `backend/.env`:
 
 ```env
 PORT=4020
@@ -170,13 +182,21 @@ E-mail: admin@delivery.local
 Senha:  admin123
 ```
 
-5. Inicie o backend em um terminal:
+5. Para rodar tudo junto com Next:
+
+```bash
+npm run dev
+```
+
+A aplicacao ficara em `http://localhost:3000` e a API em `http://localhost:3000/api`.
+
+6. Se precisar rodar o modo antigo separado, inicie o backend em um terminal:
 
 ```bash
 npm --prefix backend run dev
 ```
 
-6. Inicie o frontend em outro terminal:
+7. E o frontend Vite em outro terminal:
 
 ```bash
 npm --prefix frontend run dev
@@ -196,6 +216,16 @@ npm run smoke:proxy  # testa proxy /api do Vite para o backend
 npm run smoke:4020   # smoke test apontando explicitamente para a porta 4020
 ```
 
+### Aplicacao unificada Next
+
+```bash
+npm run dev      # Next em http://localhost:3000
+npm run build    # build de producao
+npm start        # serve o build de producao
+npm run migrate  # aplica migrations usando backend/scripts/migrate.js
+npm run seed     # cria dados iniciais usando backend/scripts/seed.js
+```
+
 ### Frontend
 
 ```bash
@@ -206,13 +236,12 @@ npm run preview  # preview em http://localhost:4173
 
 ## URLs principais
 
-- Frontend: `http://localhost:5173`
-- Backend: `http://localhost:4020`
-- Health check: `http://localhost:4020/health`
-- Health check do banco: `http://localhost:4020/health/db`
-- Swagger UI: `http://localhost:4020/docs`
-- OpenAPI JSON: `http://localhost:4020/docs.json`
-- Painel admin: `http://localhost:5173/admin`
+- Aplicacao unificada: `http://localhost:3000`
+- API unificada: `http://localhost:3000/api`
+- Health check: `http://localhost:3000/api/health`
+- Health check do banco: `http://localhost:3000/api/health/db`
+- OpenAPI JSON: `http://localhost:3000/api/docs.json`
+- Painel admin: `http://localhost:3000/admin`
 
 ## Variaveis de ambiente
 

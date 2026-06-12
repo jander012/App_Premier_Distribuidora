@@ -1,8 +1,22 @@
 import mysql from 'mysql2/promise';
 import { env } from './env.js';
 
-if (!env.database) {
-  throw new Error('Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD e DB_DATABASE');
+let mysqlPool;
+
+function getMysqlPool() {
+  if (!env.database) {
+    throw new Error('Configure DB_HOST, DB_PORT, DB_USER, DB_PASSWORD e DB_DATABASE');
+  }
+  if (!mysqlPool) {
+    mysqlPool = mysql.createPool({
+      ...env.database,
+      waitForConnections: true,
+      connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
+      namedPlaceholders: false,
+      multipleStatements: false,
+    });
+  }
+  return mysqlPool;
 }
 
 function normalizeParams(params = []) {
@@ -69,20 +83,12 @@ function normalizeResult(result) {
   return result;
 }
 
-const mysqlPool = mysql.createPool({
-  ...env.database,
-  waitForConnections: true,
-  connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
-  namedPlaceholders: false,
-  multipleStatements: false,
-});
-
 export const pool = {
   async query(text, params) {
     return query(text, params);
   },
   async connect() {
-    const connection = await mysqlPool.getConnection();
+    const connection = await getMysqlPool().getConnection();
     return {
       async query(text, params) {
         if (isConnectionCommand(text)) {
@@ -97,11 +103,14 @@ export const pool = {
     };
   },
   async end() {
-    await mysqlPool.end();
+    if (mysqlPool) {
+      await mysqlPool.end();
+      mysqlPool = null;
+    }
   },
 };
 
 export async function query(text, params) {
   const statement = prepareStatement(text, params);
-  return normalizeResult(await mysqlPool.execute(statement.sql, statement.params));
+  return normalizeResult(await getMysqlPool().execute(statement.sql, statement.params));
 }

@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import 'leaflet/dist/leaflet.css';
-import 'leaflet-draw/dist/leaflet.draw.css';
 import 'leaflet-draw';
 import { normalizePolygonForMap } from '../../utils/normalizePolygon.js';
 
