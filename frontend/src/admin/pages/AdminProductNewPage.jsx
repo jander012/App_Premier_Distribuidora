@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 import { AdminProductForm } from '../components/AdminProductForm.jsx';

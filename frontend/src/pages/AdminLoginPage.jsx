@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from '../navigation.js';
 import { api } from '../api/client.js';
 import {
   ADMIN_TOKEN_KEY,
@@ -62,7 +62,7 @@ export function AdminLoginPage() {
     } catch (e) {
       const msg =
         e?.message === 'Failed to fetch'
-          ? 'Não foi possível conectar à API. Confira se o backend está no ar e a URL (VITE_API_URL / proxy).'
+          ? 'Não foi possível conectar à API. Confira se a aplicação Next está no ar.'
           : e.message || 'Erro ao entrar.';
       setErr(msg);
     }

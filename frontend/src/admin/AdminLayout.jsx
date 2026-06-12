@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Outlet, NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from '../navigation.js';
 import { api } from '../api/client.js';
 import {
   adminAuthHeadersOnly,
@@ -30,7 +30,7 @@ function useIsMobileMenuMode() {
   return isMobile;
 }
 
-export function AdminLayout() {
+export function AdminLayout({ children }) {
   const nav = useNavigate();
   const location = useLocation();
   const isMobileNav = useIsMobileMenuMode();
@@ -84,7 +84,7 @@ export function AdminLayout() {
           if (list.length === 0 && !isSuper) {
             setBootErr(
               e?.message === 'Failed to fetch'
-                ? 'Sem conexão com a API ou CORS bloqueado. Use o mesmo host/porta do Vite ou defina CORS_ORIGINS no backend.'
+                ? 'Sem conexão com a API. Confira se a aplicação Next está no ar.'
                 : e?.message || 'Não foi possível carregar a sessão.'
             );
             setBooting(false);
@@ -365,7 +365,7 @@ export function AdminLayout() {
             para usar pedidos, produtos e as demais telas.
           </div>
         )}
-        <Outlet />
+        {children}
       </div>
     </div>
   );

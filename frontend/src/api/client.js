@@ -1,7 +1,6 @@
 /**
- * Base das chamadas à API.
- * - Dev: `/api` → proxy Vite remove `/api` e encaminha ao backend na raiz.
- * - Direto ao backend: use `http://127.0.0.1:4020` (sem `/api` no final — as rotas são `/admin/...`, não `/api/admin/...`).
+ * Base das chamadas a API.
+ * No Next, as rotas ficam em `/api`.
  */
 function resolveApiBase() {
   const raw = (process.env.NEXT_PUBLIC_API_URL || '/api').trim();
@@ -73,7 +72,7 @@ async function request(path, options = {}) {
       data?.error ||
       data?.message ||
       (typeof data === 'string' && data.startsWith('<')
-        ? 'Resposta inválida (HTML em vez de JSON). Verifique proxy / VITE_API_URL.'
+        ? 'Resposta inválida (HTML em vez de JSON). Verifique a rota /api no Next.'
         : null) ||
       res.statusText ||
       'Erro na requisição';

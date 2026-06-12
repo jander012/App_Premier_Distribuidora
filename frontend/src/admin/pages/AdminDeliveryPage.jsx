@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 import { AdminDeliveryMap } from '../components/AdminDeliveryMap.jsx';

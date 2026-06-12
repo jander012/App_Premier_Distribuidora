@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from '../navigation.js';
 import { api } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';

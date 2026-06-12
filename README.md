@@ -33,24 +33,17 @@ O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o front
 - Multi-loja via `stores`, `store_configs` e vinculo entre administradores e lojas.
 - Calculo de entrega por taxa fixa, zonas, poligonos e distancia.
 - Integracoes plugaveis para WhatsApp, PIX, Linx e PickinGo, com provedores stub para desenvolvimento.
-- Documentacao OpenAPI exposta pelo backend.
+- Documentacao OpenAPI exposta pela API Next em `/api/docs.json`.
 
 ## Stack
 
-### Backend
+### Aplicacao
 
-- Node.js com ES Modules.
-- Express.
+- Next.js com App Router.
+- React 18.
+- Rotas de API Next em `/api/*`.
 - MySQL via `mysql2`.
 - JWT para sessoes de admin, cliente e carrinho.
-- Helmet, CORS e rate limiting.
-- Swagger UI para documentacao da API.
-
-### Frontend
-
-- React 18.
-- Vite.
-- React Router.
 - Leaflet e Leaflet Draw para mapas de entrega.
 - CSS global em `frontend/src/styles/global.css`.
 
@@ -58,23 +51,23 @@ O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o front
 
 - MySQL 8.4 via Docker Compose.
 
-### Aplicacao unificada
-
-- Next.js servindo o app em uma unica porta.
-- Frontend atual carregado como aplicacao client-side.
-- API exposta por rotas Next em `/api/*`, reaproveitando controllers, middlewares, services e repositories do backend.
-
 ## Estrutura do projeto
 
 ```text
 .
+|-- app/
+|   |-- api/
+|   |   `-- [...path]/
+|   |-- admin/
+|   |-- carrinho/
+|   |-- checkout/
+|   |-- produto/
+|   `-- page.jsx
 |-- backend/
 |   |-- scripts/
 |   |   |-- migrate.js
 |   |   `-- seed.js
 |   `-- src/
-|       |-- app.js
-|       |-- server.js
 |       |-- config/
 |       |-- controllers/
 |       |-- docs/
@@ -86,21 +79,20 @@ O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o front
 |-- database/
 |   `-- migrations/
 |-- frontend/
-|   |-- index.html
-|   |-- vite.config.js
 |   `-- src/
 |       |-- admin/
 |       |-- api/
 |       |-- components/
 |       |-- context/
+|       |-- navigation.js
 |       |-- pages/
 |       |-- styles/
 |       `-- utils/
 |-- scripts/
-|   |-- smoke-api.mjs
-|   |-- smoke-vite-proxy.mjs
-|   `-- read-backend-base-url.mjs
+|   `-- smoke-api.mjs
 |-- docker-compose.yml
+|-- next.config.js
+|-- package.json
 |-- ARCHITECTURE.md
 `-- README.md
 ```
@@ -121,23 +113,15 @@ Os comandos abaixo assumem que voce esta na raiz do repositorio.
 npm install
 ```
 
-Se ainda for rodar os projetos antigos separadamente, instale tambem as dependencias internas:
-
-```bash
-npm --prefix backend install
-npm --prefix frontend install
-```
-
 2. Suba o MySQL local:
 
 ```bash
 docker compose up -d mysql
 ```
 
-3. No modo unificado, crie `.env` na raiz a partir de `.env.example`. No modo antigo separado, crie `backend/.env`:
+3. Crie `.env` na raiz a partir de `.env.example`:
 
 ```env
-PORT=4020
 NODE_ENV=development
 
 DB_HOST=127.0.0.1
@@ -151,8 +135,7 @@ JWT_EXPIRES_IN=8h
 CLIENT_JWT_EXPIRES_IN=8h
 CART_JWT_EXPIRES_IN=7d
 
-PUBLIC_MENU_URL=http://localhost:5173
-CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+PUBLIC_MENU_URL=http://localhost:3000
 INTERNAL_API_KEY=dev-internal-api-key-change-me
 
 WHATSAPP_PROVIDER=stub
@@ -166,13 +149,11 @@ OTP_DEBUG_RETURN=true
 TRUST_PROXY=1
 ```
 
-> Atencao: no estado atual do codigo, `backend/src/config/env.js` esta com dados de banco hardcoded em `parseDatabaseConfig()`. Antes de rodar localmente ou em producao, ajuste esse arquivo para usar `DB_HOST`, `DB_USER`, `DB_PASSWORD` e `DB_DATABASE` do `.env`, evitando conexao acidental com outro ambiente.
-
 4. Rode as migrations e o seed:
 
 ```bash
-npm --prefix backend run migrate
-npm --prefix backend run seed
+npm run migrate
+npm run seed
 ```
 
 O seed cria o usuario administrador:
@@ -182,7 +163,7 @@ E-mail: admin@delivery.local
 Senha:  admin123
 ```
 
-5. Para rodar tudo junto com Next:
+5. Rode a aplicacao:
 
 ```bash
 npm run dev
@@ -190,33 +171,7 @@ npm run dev
 
 A aplicacao ficara em `http://localhost:3000` e a API em `http://localhost:3000/api`.
 
-6. Se precisar rodar o modo antigo separado, inicie o backend em um terminal:
-
-```bash
-npm --prefix backend run dev
-```
-
-7. E o frontend Vite em outro terminal:
-
-```bash
-npm --prefix frontend run dev
-```
-
 ## Scripts uteis
-
-### Backend
-
-```bash
-npm run dev          # API com node --watch
-npm start            # API sem watch
-npm run migrate      # aplica database/migrations/*.sql
-npm run seed         # cria dados iniciais e admin local
-npm run smoke        # testa health, stores, login e /admin/me
-npm run smoke:proxy  # testa proxy /api do Vite para o backend
-npm run smoke:4020   # smoke test apontando explicitamente para a porta 4020
-```
-
-### Aplicacao unificada Next
 
 ```bash
 npm run dev      # Next em http://localhost:3000
@@ -224,14 +179,6 @@ npm run build    # build de producao
 npm start        # serve o build de producao
 npm run migrate  # aplica migrations usando backend/scripts/migrate.js
 npm run seed     # cria dados iniciais usando backend/scripts/seed.js
-```
-
-### Frontend
-
-```bash
-npm run dev      # Vite em http://localhost:5173
-npm run build    # build de producao
-npm run preview  # preview em http://localhost:4173
 ```
 
 ## URLs principais
@@ -249,7 +196,6 @@ npm run preview  # preview em http://localhost:4173
 
 | Variavel | Descricao |
 | --- | --- |
-| `PORT` | Porta da API. Padrao: `4020`. |
 | `NODE_ENV` | Ambiente atual. Use `production` em producao. |
 | `DB_HOST` | Host do MySQL. |
 | `DB_PORT` | Porta do MySQL. No Docker Compose local: `3307`. |
@@ -261,23 +207,14 @@ npm run preview  # preview em http://localhost:4173
 | `CLIENT_JWT_EXPIRES_IN` | Expiracao do token do cliente. |
 | `CART_JWT_EXPIRES_IN` | Expiracao do token do carrinho. |
 | `PUBLIC_MENU_URL` | URL publica do cardapio enviada em links. |
-| `CORS_ORIGINS` | Origens permitidas separadas por virgula. |
 | `INTERNAL_API_KEY` | Chave para rotas internas de pagamentos e WhatsApp. |
 | `OTP_DEBUG_RETURN` | Em dev, retorna o codigo OTP na resposta. |
-| `TRUST_PROXY` | Configuracao de proxy do Express. Em dev costuma ser `1`. |
+| `TRUST_PROXY` | Numero de hops quando a aplicacao estiver atras de proxy/reverse proxy. |
 | `MEDIA_UPLOAD_DIR` | Diretorio para imagens espelhadas. Padrao: `backend/uploads/media`. |
 | `OSRM_BASE_URL` | Base do servico OSRM para rotas. |
 | `THERMAL_PRINTER_INTERFACE` | Interface da impressora termica, ex.: `tcp://192.168.0.50:9100`. |
 | `THERMAL_PRINTER_TYPE` | Tipo da impressora, ex.: `epson`. |
 | `THERMAL_PRINTER_WIDTH` | Largura em caracteres da impressora termica. |
-
-### Frontend
-
-| Variavel | Descricao |
-| --- | --- |
-| `VITE_API_URL` | URL direta da API. Em dev, se ausente, usa `/api` via proxy do Vite. |
-| `VITE_API_PROXY_TARGET` | Destino do proxy `/api`. Padrao: porta lida de `backend/.env` ou `http://127.0.0.1:4020`. |
-| `VITE_BASE_URL` | Base path do app no build. Padrao: `/`. |
 
 ## Banco de dados
 
@@ -305,7 +242,7 @@ Tabelas principais:
 
 ## API
 
-O backend registra as rotas em `backend/src/app.js`. A documentacao completa fica em `/docs`.
+A API registra as rotas em `app/api/[...path]/route.js`. Todas as rotas abaixo ficam sob o prefixo `/api`; por exemplo, `GET /health` fica acessivel em `GET /api/health`.
 
 Rotas publicas importantes:
 
@@ -377,7 +314,7 @@ Rotas do app:
 - `/admin/painel/midias` - midias.
 - `/admin/painel/plataforma` - lojas e administradores da plataforma.
 
-Em desenvolvimento, o Vite encaminha chamadas de `/api/*` para o backend e remove o prefixo `/api`.
+Em desenvolvimento e producao, o frontend chama a API Next pelo prefixo `/api`.
 
 ## Integracoes
 
@@ -392,28 +329,18 @@ Para desenvolvimento, mantenha os provedores como `stub`. Para producao, configu
 
 ## Smoke tests
 
-Com backend no ar:
+Com a aplicacao Next no ar:
 
 ```bash
-cd backend
 npm run smoke
 ```
 
 Esse teste chama:
 
-- `GET /health`
-- `GET /stores`
-- `POST /admin/login`
-- `GET /admin/me`
-
-Com backend e frontend no ar:
-
-```bash
-cd backend
-npm run smoke:proxy
-```
-
-Esse teste compara `GET http://127.0.0.1:5173/api/stores` com `GET http://127.0.0.1:4020/stores`.
+- `GET /api/health`
+- `GET /api/stores`
+- `POST /api/admin/login`
+- `GET /api/admin/me`
 
 ## Notas de seguranca
 
@@ -421,8 +348,6 @@ Esse teste compara `GET http://127.0.0.1:5173/api/stores` com `GET http://127.0.
 - Em producao, defina `JWT_SECRET` com pelo menos 32 caracteres.
 - Em producao, defina `INTERNAL_API_KEY` com pelo menos 24 caracteres.
 - Desative `OTP_DEBUG_RETURN` fora de desenvolvimento.
-- Restrinja `CORS_ORIGINS` aos dominios reais.
-- Revise `backend/src/config/env.js` para remover credenciais hardcoded e ler configuracao exclusivamente do ambiente.
 - Troque a senha do admin criado pelo seed antes de qualquer uso real.
 
 ## Documentacao adicional

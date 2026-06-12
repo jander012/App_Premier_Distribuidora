@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom';
+import { Link } from '../navigation.js';
 import { useCart } from '../context/CartContext.jsx';
 
 export function CartPage() {

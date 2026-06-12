@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
+import { Link, useParams } from '../navigation.js';
 import { api } from '../api/client.js';
 
 export function DeliveryConfirmationPage() {

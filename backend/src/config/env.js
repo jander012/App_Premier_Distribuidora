@@ -7,12 +7,6 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const defaultMediaDir = path.join(__dirname, '..', '..', 'uploads', 'media');
 
-const corsRaw = process.env.CORS_ORIGINS || '';
-const corsOrigins = corsRaw
-  .split(',')
-  .map((s) => s.trim())
-  .filter(Boolean);
-
 function parseDatabaseConfig() {
   const host = process.env.DB_HOST || 'localhost';
   const user = process.env.DB_USER;
@@ -32,9 +26,8 @@ function parseDatabaseConfig() {
 }
 
 /**
- * Express "trust proxy": número de hops (ex.: 1) ou false.
- * Não use boolean `true` — o express-rate-limit rejeita.
- * Em dev, padrão 1 porque o proxy do Vite envia X-Forwarded-For; sem isso o rate-limit lança e vira 500.
+ * Proxy upstream: número de hops (ex.: 1) ou false.
+ * Em produção atrás de proxy/reverse proxy, normalmente use 1.
  */
 function parseTrustProxy() {
   const raw = process.env.TRUST_PROXY;
@@ -56,15 +49,13 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   clientJwtExpiresIn: process.env.CLIENT_JWT_EXPIRES_IN || '8h',
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',
-  publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:5173',
+  publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:3000',
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',
   pixProvider: process.env.PIX_PROVIDER || 'stub',
   linxProvider: process.env.LINX_PROVIDER || 'stub',
   pickingoProvider: process.env.PICKINGO_PROVIDER || 'stub',
   linxIntegrationEnabled: process.env.LINX_INTEGRATION_ENABLED === 'true',
   pickingoIntegrationEnabled: process.env.PICKINGO_INTEGRATION_ENABLED === 'true',
-  /** Origens permitidas (CORS). Vazio = apenas localhost:5173 em dev. */
-  corsOrigins,
   /** Obrigatório para POST /whatsapp/* e POST /payments/* (exceto fluxo interno via serviço). */
   internalApiKey: process.env.INTERNAL_API_KEY || '',
   /** Em development ou true, /auth/client/request-code retorna o código OTP na resposta. */
