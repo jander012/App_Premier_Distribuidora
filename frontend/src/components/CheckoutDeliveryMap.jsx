@@ -60,13 +60,14 @@ async function reverseGeocode(lat, lng) {
 /**
  * @param {{
  *   polygon?: object|null,
+ *   polygonZones?: Array<{ geojson: object|null }>|null,
  *   initialLat?: number|null,
  *   initialLng?: number|null,
  *   onChange: (v: {lat:number,lng:number}) => void,
  *   onAddressChange?: (v: object) => void,
  * }} props
  */
-export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange, onAddressChange }) {
+export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initialLng, onChange, onAddressChange }) {
   const wrapRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
@@ -83,8 +84,10 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange,
     if (!wrapRef.current || mapRef.current) return undefined;
     let destroyed = false;
 
-    const hasPolygon = polygon?.type === 'Polygon' && polygon.coordinates?.[0]?.length >= 3;
-    const ring = hasPolygon ? polygon.coordinates[0] : null;
+    const zonePolygons = (polygonZones || []).map((z) => z?.geojson).filter((p) => p?.type === 'Polygon');
+    const polygons = zonePolygons.length > 0 ? zonePolygons : polygon?.type === 'Polygon' ? [polygon] : [];
+    const hasPolygon = polygons.length > 0 && polygons[0].coordinates?.[0]?.length >= 3;
+    const ring = hasPolygon ? polygons[0].coordinates[0] : null;
     const fallback = ring?.length ? ringBBoxCenterLatLng(ring) : [-15.78, -47.93];
     const savedLat = Number.isFinite(Number(initialLat)) ? Number(initialLat) : null;
     const savedLng = Number.isFinite(Number(initialLng)) ? Number(initialLng) : null;
@@ -101,8 +104,12 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange,
       maxZoom: 19,
     }).addTo(map);
 
+    const polygonCollection = {
+      type: 'FeatureCollection',
+      features: polygons.map((geometry) => ({ type: 'Feature', properties: {}, geometry })),
+    };
     const polyLayer = hasPolygon
-      ? L.geoJSON(polygon, {
+      ? L.geoJSON(polygonCollection, {
           style: { color: '#171717', weight: 2, fillColor: '#fbbc23', fillOpacity: 0.12 },
         }).addTo(map)
       : null;
@@ -243,7 +250,7 @@ export function CheckoutDeliveryMap({ polygon, initialLat, initialLng, onChange,
       mapRef.current = null;
       markerRef.current = null;
     };
-  }, [polygon, initialLat, initialLng]);
+  }, [polygon, polygonZones, initialLat, initialLng]);
 
   return (
     <div>
@@ -285,4 +292,10 @@ export function isInsideDeliveryPolygon(polygon, lat, lng) {
   const r = polygon?.coordinates?.[0];
   if (!r?.length) return true;
   return pointInPolygonRing(lng, lat, r);
+}
+
+export function isInsideAnyDeliveryPolygon(polygons, lat, lng) {
+  const list = (polygons || []).filter((p) => p?.type === 'Polygon');
+  if (!list.length) return true;
+  return list.some((p) => isInsideDeliveryPolygon(p, lat, lng));
 }

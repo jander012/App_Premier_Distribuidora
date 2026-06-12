@@ -56,6 +56,8 @@ export async function createOrder(body, opts = {}) {
 
   const summary = await cartService.getCartSummary(cartId, {
     distanceResolution,
+    deliveryLat,
+    deliveryLng,
     deliveryAt,
   });
   if (!summary.items.length) throw new AppError(400, 'Carrinho vazio');

@@ -65,15 +65,38 @@ export function applyDayModifier(baseFee, modifierRow) {
   return Math.max(0, Math.round(v * 100) / 100);
 }
 
+export async function findPolygonZoneForPoint(storeId, lat, lng) {
+  const la = numOrUndef(lat);
+  const ln = numOrUndef(lng);
+  if (!storeId || la == null || ln == null) return null;
+  const zones = await deliveryRepo.listPolygonZones(storeId);
+  for (const zone of zones) {
+    if (zone.active === false) continue;
+    const poly = parseDeliveryPolygon(zone.geojson);
+    const ring = poly?.coordinates?.[0];
+    if (ring?.length && pointInPolygonRing(ln, la, ring)) {
+      return zone;
+    }
+  }
+  return null;
+}
+
 /**
  * @param {number} storeId
- * @param {{ distanceKm?: number|null, at?: Date }} opts
+ * @param {{ distanceKm?: number|null, at?: Date, destLat?: number|null, destLng?: number|null }} opts
  */
 export async function computeDeliveryFeeForStore(storeId, opts = {}) {
-  const { distanceKm = null, at = new Date() } = opts;
+  const { distanceKm = null, at = new Date(), destLat = null, destLng = null } = opts;
   const config = await settingsRepo.getStoreConfig(storeId);
   const zones = await deliveryRepo.listZones(storeId);
   const usePerKm = Boolean(config?.delivery_use_per_km_pricing);
+  const polygonZone = await findPolygonZoneForPoint(storeId, destLat, destLng);
+
+  if (polygonZone) {
+    const dow = at.getDay();
+    const mod = await deliveryRepo.getDayModifier(storeId, dow);
+    return applyDayModifier(Number(polygonZone.fee), mod);
+  }
 
   if (usePerKm) {
     const minTrip = Number(config?.delivery_min_trip_fee ?? 0);
@@ -167,6 +190,21 @@ function numOrUndef(v) {
  */
 export async function assertDeliveryInsidePolygonIfConfigured(storeId, lat, lng) {
   if (!storeId) return;
+  const polygonZones = await deliveryRepo.listPolygonZones(storeId);
+  const activePolygonZones = polygonZones.filter((z) => z.active !== false);
+  if (activePolygonZones.length > 0) {
+    const la = numOrUndef(lat);
+    const ln = numOrUndef(lng);
+    if (la == null || ln == null) {
+      throw new AppError(400, 'Marque no mapa o ponto de entrega (áreas delimitadas pela loja)');
+    }
+    for (const zone of activePolygonZones) {
+      const poly = parseDeliveryPolygon(zone.geojson);
+      const ring = poly?.coordinates?.[0];
+      if (ring?.length && pointInPolygonRing(ln, la, ring)) return;
+    }
+    throw new AppError(400, 'O endereço de entrega está fora das áreas atendidas pela loja');
+  }
   const raw = await deliveryRepo.getDeliveryPolygonForStore(storeId);
   const poly = parseDeliveryPolygon(raw);
   if (!poly) return;

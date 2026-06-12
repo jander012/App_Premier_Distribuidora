@@ -470,6 +470,20 @@ a {
   gap: 0.35rem;
 }
 
+.nav-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-shrink: 0;
+}
+
+.orders-link {
+  font-size: 0.9rem;
+  font-weight: 800;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .badge {
   background: var(--accent);
   color: #0f172a;
@@ -1213,6 +1227,16 @@ body {
   background: #faf6ed;
 }
 
+.customer-orders-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.customer-order-card {
+  display: block;
+  color: #171717;
+}
+
 .checkout-location-actions {
   display: flex;
   flex-wrap: wrap;
@@ -1292,6 +1316,10 @@ body {
     min-height: 38px;
     padding: 0 0.75rem;
     justify-content: center;
+  }
+
+  .orders-link {
+    display: none;
   }
 
   .app-shell:not(.app-shell--admin) .cart-icon {

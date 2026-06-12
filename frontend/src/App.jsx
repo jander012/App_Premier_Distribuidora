@@ -5,6 +5,7 @@ import { ProductPage } from './pages/ProductPage.jsx';
 import { CartPage } from './pages/CartPage.jsx';
 import { CheckoutPage } from './pages/CheckoutPage.jsx';
 import { OrderSuccessPage } from './pages/OrderSuccessPage.jsx';
+import { CustomerOrdersPage } from './pages/CustomerOrdersPage.jsx';
 import { DeliveryConfirmationPage } from './pages/DeliveryConfirmationPage.jsx';
 import { AdminLoginPage } from './pages/AdminLoginPage.jsx';
 import { AdminLayout } from './admin/AdminLayout.jsx';
@@ -29,6 +30,7 @@ export default function App() {
         <Route path="/carrinho" element={<CartPage />} />
         <Route path="/checkout" element={<CheckoutPage />} />
         <Route path="/pedido/:id" element={<OrderSuccessPage />} />
+        <Route path="/meus-pedidos" element={<CustomerOrdersPage />} />
         <Route path="/confirmar-entrega/:token" element={<DeliveryConfirmationPage />} />
         <Route path="/admin" element={<AdminLoginPage />} />
         <Route path="/admin/painel" element={<AdminLayout />}>

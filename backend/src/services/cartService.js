@@ -48,6 +48,8 @@ export async function getCartSummary(
     deliveryFee = await deliveryPricingService.computeDeliveryFeeForStore(storeId, {
       distanceKm: km,
       at,
+      destLat: deliveryLat,
+      destLng: deliveryLng,
     });
   } else {
     const settings = await settingsRepo.getStoreConfig(1);

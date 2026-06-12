@@ -11,6 +11,7 @@ async function buildDeliveryPayload(storeId) {
     deliveryRepo.getDeliveryPolygonForStore(storeId),
     deliveryRepo.listTimeRates(storeId),
   ]);
+  const polygonZones = await deliveryRepo.listPolygonZones(storeId);
   return {
     storeId,
     deliveryFee: Number(config?.delivery_fee ?? 0),
@@ -21,6 +22,14 @@ async function buildDeliveryPayload(storeId) {
     deliveryOriginLat: config?.delivery_origin_lat != null ? Number(config.delivery_origin_lat) : null,
     deliveryOriginLng: config?.delivery_origin_lng != null ? Number(config.delivery_origin_lng) : null,
     deliveryAreaPolygon: parseDeliveryPolygon(areaPolygon),
+    polygonZones: polygonZones.map((z, idx) => ({
+      id: z.id,
+      name: z.name,
+      fee: Number(z.fee),
+      geojson: parseDeliveryPolygon(z.geojson),
+      sortOrder: z.sort_order ?? idx,
+      active: z.active !== false,
+    })),
     zones: zones.map((z) => ({
       id: z.id,
       maxKm: Number(z.max_km),
@@ -110,6 +119,13 @@ export async function putDelivery(req, res, next) {
 
     if (Array.isArray(b.zones)) {
       await deliveryRepo.replaceZones(storeId, b.zones);
+    }
+    if (Array.isArray(b.polygonZones)) {
+      const normalizedZones = b.polygonZones.map((z) => ({
+        ...z,
+        geojson: validateAndNormalizePolygonGeoJson(z.geojson ?? z.polygon),
+      }));
+      await deliveryRepo.replacePolygonZones(storeId, normalizedZones);
     }
     if (Array.isArray(b.dayModifiers)) {
       await deliveryRepo.replaceDayModifiers(storeId, b.dayModifiers);

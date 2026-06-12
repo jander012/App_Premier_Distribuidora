@@ -13,6 +13,7 @@ export async function getPublicSettings(req, res, next) {
     const rawPoly = await deliveryRepo.getDeliveryPolygonForStore(store.id);
     const poly = parseDeliveryPolygon(rawPoly);
     const zones = await deliveryRepo.listZones(store.id);
+    const polygonZones = await deliveryRepo.listPolygonZones(store.id);
     const oLa = s?.delivery_origin_lat != null ? Number(s.delivery_origin_lat) : null;
     const oLn = s?.delivery_origin_lng != null ? Number(s.delivery_origin_lng) : null;
     const originOk = Number.isFinite(oLa) && Number.isFinite(oLn);
@@ -27,6 +28,16 @@ export async function getPublicSettings(req, res, next) {
       deliveryUsePerKmPricing: perKm,
       deliveryMinTripFee: s?.delivery_min_trip_fee != null ? Number(s.delivery_min_trip_fee) : 0,
       deliveryAreaPolygon: poly,
+      deliveryPolygonZones: polygonZones
+        .filter((z) => z.active !== false)
+        .map((z) => ({
+          id: z.id,
+          name: z.name,
+          fee: Number(z.fee),
+          geojson: parseDeliveryPolygon(z.geojson),
+          sortOrder: z.sort_order,
+        }))
+        .filter((z) => z.geojson),
       deliveryOriginLat: originOk ? oLa : null,
       deliveryOriginLng: originOk ? oLn : null,
       /** Distância de rota (OSRM) quando há origem + ponto de entrega; senão km informado. */

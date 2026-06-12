@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { api, setClientToken, getClientToken } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore } from '../context/StoreContext.jsx';
-import { CheckoutDeliveryMap, isInsideDeliveryPolygon } from '../components/CheckoutDeliveryMap.jsx';
+import { CheckoutDeliveryMap, isInsideAnyDeliveryPolygon } from '../components/CheckoutDeliveryMap.jsx';
 
 const PAYMENTS = [
   { code: 'pix_online', label: 'PIX (online)' },
@@ -137,9 +137,11 @@ export function CheckoutPage() {
     }
   }, [storeSlug, deliveryPin]);
 
-  const hasDeliveryPolygon =
-    deliveryPublic?.deliveryAreaPolygon?.type === 'Polygon' &&
-    deliveryPublic.deliveryAreaPolygon.coordinates?.[0]?.length >= 3;
+  const deliveryPolygons = [
+    ...((deliveryPublic?.deliveryPolygonZones || []).map((z) => z.geojson).filter(Boolean)),
+    ...(deliveryPublic?.deliveryAreaPolygon ? [deliveryPublic.deliveryAreaPolygon] : []),
+  ].filter((p) => p?.type === 'Polygon' && p.coordinates?.[0]?.length >= 3);
+  const hasDeliveryPolygon = deliveryPolygons.length > 0;
   const taxaUsaRotaNoMapa =
     Boolean(deliveryPublic?.deliveryPricingUsesRoute) && Boolean(hasDeliveryPolygon);
 
@@ -249,13 +251,12 @@ export function CheckoutPage() {
           }
         : {};
 
-    const poly = deliveryPublic?.deliveryAreaPolygon;
-    if (poly?.type === 'Polygon' && poly.coordinates?.[0]?.length) {
+    if (deliveryPolygons.length > 0) {
       if (!deliveryPin || !Number.isFinite(deliveryPin.lat) || !Number.isFinite(deliveryPin.lng)) {
         setSubmitErr('Marque no mapa onde será a entrega.');
         return;
       }
-      if (!isInsideDeliveryPolygon(poly, deliveryPin.lat, deliveryPin.lng)) {
+      if (!isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng)) {
         setSubmitErr('O ponto marcado está fora da área de entrega da loja.');
         return;
       }
@@ -467,6 +468,7 @@ export function CheckoutPage() {
             <CheckoutDeliveryMap
               key={`dm-${savedAddrLat ?? sessionPinLat ?? 'x'}-${savedAddrLng ?? sessionPinLng ?? 'y'}-${hasDeliveryPolygon ? 'poly' : 'free'}`}
               polygon={hasDeliveryPolygon ? deliveryPublic.deliveryAreaPolygon : null}
+              polygonZones={hasDeliveryPolygon ? deliveryPublic.deliveryPolygonZones : null}
               initialLat={savedAddrLat ?? sessionPinLat}
               initialLng={savedAddrLng ?? sessionPinLng}
               onChange={setDeliveryPin}

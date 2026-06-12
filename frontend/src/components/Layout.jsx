@@ -54,6 +54,9 @@ export function Layout({ children }) {
             )}
           </div>
           <nav className="nav-actions">
+            <Link to="/meus-pedidos" className="orders-link">
+              Meus pedidos
+            </Link>
             <Link to="/carrinho" className="cart-link">
               <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true">
                 <path

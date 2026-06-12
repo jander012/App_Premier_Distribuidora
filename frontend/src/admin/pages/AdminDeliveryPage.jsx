@@ -19,6 +19,8 @@ export function AdminDeliveryPage() {
   const [minTripFee, setMinTripFee] = useState('0');
   const [timeRates, setTimeRates] = useState([]);
   const [deliveryPolygon, setDeliveryPolygon] = useState(null);
+  const [polygonZones, setPolygonZones] = useState([]);
+  const [selectedPolygonZone, setSelectedPolygonZone] = useState(0);
   /** Origem da loja (saída do entregador) — pino laranja no mapa */
   const [mapOrigin, setMapOrigin] = useState({ lat: null, lng: null });
   /** JSON do último GET — se o estado do mapa difere, o PUT envia deliveryAreaPolygon. */
@@ -60,6 +62,15 @@ export function AdminDeliveryPage() {
         }))
       );
       setDayModifiers(d.dayModifiers || []);
+      const nextPolygonZones = (d.polygonZones || []).map((z, idx) => ({
+        name: z.name || `Área ${idx + 1}`,
+        fee: z.fee ?? 0,
+        geojson: normalizePolygonForMap(z.geojson),
+        sortOrder: z.sortOrder ?? idx,
+        active: z.active !== false,
+      }));
+      setPolygonZones(nextPolygonZones);
+      setSelectedPolygonZone((idx) => Math.min(idx, Math.max(nextPolygonZones.length - 1, 0)));
       setMapOrigin({
         lat: d.deliveryOriginLat != null ? Number(d.deliveryOriginLat) : null,
         lng: d.deliveryOriginLng != null ? Number(d.deliveryOriginLng) : null,
@@ -114,6 +125,33 @@ export function AdminDeliveryPage() {
     setTimeRates((list) => list.filter((_, j) => j !== i));
   }
 
+  function addPolygonZone() {
+    setPolygonZones((list) => {
+      const next = [
+        ...list,
+        { name: `Área ${list.length + 1}`, fee: 0, geojson: null, sortOrder: list.length, active: true },
+      ];
+      setSelectedPolygonZone(next.length - 1);
+      return next;
+    });
+  }
+
+  function updatePolygonZone(i, field, value) {
+    setPolygonZones((list) => {
+      const next = [...list];
+      next[i] = { ...next[i], [field]: value };
+      return next;
+    });
+  }
+
+  function removePolygonZone(i) {
+    setPolygonZones((list) => {
+      const next = list.filter((_, j) => j !== i);
+      setSelectedPolygonZone((idx) => Math.min(Math.max(0, idx > i ? idx - 1 : idx), Math.max(next.length - 1, 0)));
+      return next;
+    });
+  }
+
   function updateDay(i, field, value) {
     setDayModifiers((list) => {
       const next = [...list];
@@ -151,6 +189,15 @@ export function AdminDeliveryPage() {
           fee: Number(String(z.fee).replace(',', '.')),
           sortOrder: z.sortOrder ?? idx,
         })),
+        polygonZones: polygonZones
+          .filter((z) => z.geojson?.type === 'Polygon')
+          .map((z, idx) => ({
+            name: z.name,
+            fee: Number(String(z.fee).replace(',', '.')) || 0,
+            geojson: z.geojson,
+            sortOrder: z.sortOrder ?? idx,
+            active: z.active !== false,
+          })),
         dayModifiers: dayModifiers.map((m) => ({
           dayOfWeek: m.dayOfWeek,
           feeMultiplier: Number(String(m.feeMultiplier).replace(',', '.')),
@@ -319,6 +366,73 @@ export function AdminDeliveryPage() {
         <p className="muted" style={{ fontSize: '0.82rem' }}>
           Ordene do menor para o maior <strong>até</strong>. Ex.: 3 km → R$ 5; 7 km → R$ 8. Acima da última faixa vale a
           taxa da última linha.
+        </p>
+        <h2 style={{ fontSize: '1.05rem' }}>Poligonos com taxa de frete</h2>
+        <p className="muted" style={{ fontSize: '0.82rem' }}>
+          Cada area abaixo pode ter uma taxa propria. Se o cliente marcar a entrega dentro dela, essa taxa e aplicada
+          antes das faixas por km.
+        </p>
+        {polygonZones.map((z, i) => (
+          <div
+            key={i}
+            style={{
+              marginBottom: 8,
+              padding: '0.75rem',
+              border: '1px solid var(--surface2)',
+              borderRadius: 8,
+            }}
+          >
+            <div className="row-between" style={{ gap: 8, flexWrap: 'wrap', alignItems: 'end' }}>
+              <div className="field" style={{ flex: '1 1 180px', marginBottom: 0 }}>
+                <label>Nome</label>
+                <input value={z.name} onChange={(e) => updatePolygonZone(i, 'name', e.target.value)} />
+              </div>
+              <div className="field" style={{ width: 120, marginBottom: 0 }}>
+                <label>Taxa R$</label>
+                <input
+                  inputMode="decimal"
+                  value={z.fee}
+                  onChange={(e) => updatePolygonZone(i, 'fee', e.target.value)}
+                />
+              </div>
+              <button
+                type="button"
+                className={selectedPolygonZone === i ? 'btn btn-primary' : 'btn btn-ghost'}
+                style={{ width: 'auto' }}
+                onClick={() => setSelectedPolygonZone(i)}
+              >
+                Editar mapa
+              </button>
+              <button type="button" className="btn btn-ghost" style={{ width: 'auto' }} onClick={() => removePolygonZone(i)}>
+                Remover
+              </button>
+            </div>
+            <p className="muted" style={{ fontSize: '0.78rem', marginBottom: 0 }}>
+              {z.geojson?.coordinates?.[0]?.length ? 'Poligono desenhado.' : 'Selecione e desenhe esta area no mapa abaixo.'}
+            </p>
+          </div>
+        ))}
+        <button type="button" className="btn btn-ghost" style={{ marginBottom: '0.75rem' }} onClick={addPolygonZone}>
+          + Poligono com taxa
+        </button>
+        {polygonZones.length > 0 && (
+          <>
+            <p className="muted" style={{ fontSize: '0.82rem' }}>
+              Editando: <strong>{polygonZones[selectedPolygonZone]?.name || `Área ${selectedPolygonZone + 1}`}</strong>
+            </p>
+            <AdminDeliveryMap
+              key={`zone-map-${selectedPolygonZone}`}
+              centerLat={mapOrigin.lat ?? data?.deliveryOriginLat}
+              centerLng={mapOrigin.lng ?? data?.deliveryOriginLng}
+              polygon={polygonZones[selectedPolygonZone]?.geojson ?? null}
+              onPolygonChange={(gj) => updatePolygonZone(selectedPolygonZone, 'geojson', gj)}
+            />
+          </>
+        )}
+
+        <h2 style={{ fontSize: '1.05rem' }}>Faixas por km</h2>
+        <p className="muted" style={{ fontSize: '0.82rem' }}>
+          Ordene do menor para o maior. Acima da ultima faixa vale a taxa da ultima linha.
         </p>
         {zones.map((z, i) => (
           <div key={i} className="row-between" style={{ gap: 8, marginBottom: 8, flexWrap: 'wrap' }}>

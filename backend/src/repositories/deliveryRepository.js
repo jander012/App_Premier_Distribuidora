@@ -130,6 +130,39 @@ export async function deleteDeliveryPolygon(storeId) {
   }
 }
 
+export async function listPolygonZones(storeId) {
+  const { rows } = await query(
+    `SELECT id, name, fee, geojson, sort_order, active
+     FROM store_delivery_polygon_zones
+     WHERE store_id = $1
+     ORDER BY sort_order ASC, id ASC`,
+    [storeId]
+  );
+  return rows.map((row) => ({
+    ...row,
+    active: Boolean(row.active),
+    geojson: rowGeojsonValue(row),
+  }));
+}
+
+export async function replacePolygonZones(storeId, zones) {
+  await query(`DELETE FROM store_delivery_polygon_zones WHERE store_id = $1`, [storeId]);
+  let i = 0;
+  for (const z of zones) {
+    const fee = Number(z.fee);
+    const geojson = z.geojson ?? z.polygon ?? z.deliveryAreaPolygon;
+    const sortOrder = z.sort_order ?? z.sortOrder ?? i;
+    const name = String(z.name || `Área ${i + 1}`).trim().slice(0, 128) || `Área ${i + 1}`;
+    if (!Number.isFinite(fee) || fee < 0) continue;
+    await query(
+      `INSERT INTO store_delivery_polygon_zones (store_id, name, fee, geojson, sort_order, active)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [storeId, name, fee, JSON.stringify(geojson), sortOrder, z.active !== false]
+    );
+    i += 1;
+  }
+}
+
 export async function listZones(storeId) {
   const { rows } = await query(
     `SELECT id, max_km, fee, sort_order
