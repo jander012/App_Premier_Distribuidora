@@ -74,6 +74,17 @@ function logAdminPolygonLocation(gj) {
   }
 }
 
+function isMapReady(map) {
+  if (!map) return false;
+  const container = map.getContainer?.();
+  return Boolean(
+    container &&
+      container.isConnected &&
+      map.getPane?.('markerPane') &&
+      map.getPane?.('overlayPane')
+  );
+}
+
 /**
  * @param {{
  *   centerLat?: number|null,
@@ -173,17 +184,29 @@ export function AdminDeliveryMap({
 
   useEffect(() => {
     let tries = 0;
+    let disposed = false;
+    const frameIds = [];
+    const enqueueFrame = (fn) => {
+      const id = requestAnimationFrame(() => {
+        const index = frameIds.indexOf(id);
+        if (index >= 0) frameIds.splice(index, 1);
+        if (!disposed) fn();
+      });
+      frameIds.push(id);
+    };
     const sync = () => {
+      if (disposed) return;
       const map = mapRef.current;
       const drawnItems = drawnItemsRef.current;
-      if (!map || !drawnItems) {
-        if (tries++ < 50) requestAnimationFrame(sync);
+      if (!map || !drawnItems || !isMapReady(map)) {
+        if (tries++ < 50) enqueueFrame(sync);
         return;
       }
 
       const normalized = normalizePolygonForMap(polygon);
 
       const apply = () => {
+        if (disposed || mapRef.current !== map || !isMapReady(map)) return;
         try {
           map.invalidateSize();
           drawnItems.clearLayers();
@@ -206,6 +229,7 @@ export function AdminDeliveryMap({
 
         const setOrigin = onStoreOriginRef.current;
         if (typeof setOrigin === 'function') {
+          if (!isMapReady(map)) return;
           const oLa = Number(storeOriginLat);
           const oLn = Number(storeOriginLng);
           let lat = Number.isFinite(oLa) ? oLa : null;
@@ -228,6 +252,7 @@ export function AdminDeliveryMap({
           });
           if (!storeMarkerRef.current) {
             const m = L.marker([lat, lng], { draggable: true, icon, zIndexOffset: 2000 });
+            if (!isMapReady(map)) return;
             m.addTo(map);
             m.on('dragend', () => {
               const ll = m.getLatLng();
@@ -240,12 +265,16 @@ export function AdminDeliveryMap({
         }
       };
 
-      requestAnimationFrame(() => {
+      enqueueFrame(() => {
         apply();
-        requestAnimationFrame(apply);
+        enqueueFrame(apply);
       });
     };
     sync();
+    return () => {
+      disposed = true;
+      for (const id of frameIds) cancelAnimationFrame(id);
+    };
   }, [polygon, centerLat, centerLng, mapEpoch, storeOriginLat, storeOriginLng]);
 
   return (

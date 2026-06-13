@@ -34,7 +34,7 @@ function parseTrustProxy() {
   const raw = process.env.TRUST_PROXY;
   if (raw === 'false' || raw === '0') return false;
   if (raw === undefined || raw === '') {
-    return (process.env.NODE_ENV || 'development') === 'development' ? 1 : false;
+    return 1;
   }
   const n = Number(raw);
   if (!Number.isNaN(n) && n >= 0) return n;
