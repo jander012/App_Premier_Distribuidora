@@ -11,6 +11,7 @@ function parseDatabaseConfig() {
   const host = process.env.DB_HOST || 'localhost';
   const user = process.env.DB_USER;
   const database = process.env.DB_DATABASE;
+  const defaultPort = (process.env.NODE_ENV || 'development') === 'production' ? 3306 : 3307;
 
   if (!host || !user || !database) {
     return null;
@@ -18,7 +19,7 @@ function parseDatabaseConfig() {
 
   return {
     host,
-    port: Number(process.env.DB_PORT) || 3306,
+    port: Number(process.env.DB_PORT) || defaultPort,
     user,
     password: process.env.DB_PASSWORD || '',
     database,

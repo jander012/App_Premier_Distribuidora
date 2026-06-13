@@ -1,7 +1,12 @@
 'use client';
 
 import NextLink from 'next/link';
-import { usePathname, useParams as useNextParams, useRouter, useSearchParams } from 'next/navigation';
+import {
+  usePathname,
+  useParams as useNextParams,
+  useRouter,
+  useSearchParams as useNextSearchParams,
+} from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 
 const NAV_STATE_PREFIX = 'next_nav_state:';
@@ -71,7 +76,7 @@ export function useNavigate() {
 
 export function useLocation() {
   const pathname = usePathname() || '/';
-  const searchParams = useSearchParams();
+  const searchParams = useNextSearchParams();
   const search = searchParams?.toString() ? `?${searchParams.toString()}` : '';
   const [state, setState] = useState(null);
 
@@ -86,4 +91,17 @@ export function useParams() {
   return useNextParams();
 }
 
-export { useSearchParams };
+export function useSearchParams() {
+  const router = useRouter();
+  const pathname = usePathname() || '/';
+  const searchParams = useNextSearchParams();
+  const setSearchParams = (nextInit) => {
+    const next =
+      nextInit instanceof URLSearchParams
+        ? nextInit
+        : new URLSearchParams(nextInit || undefined);
+    const query = next.toString();
+    router.push(query ? `${pathname}?${query}` : pathname);
+  };
+  return [searchParams, setSearchParams];
+}
