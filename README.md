@@ -2,7 +2,7 @@
 
 Aplicacao web para cardapio digital, pedidos de delivery e painel administrativo da Premier Distribuidora.
 
-O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o frontend React e a API em `/api/*`. A estrutura antiga de `frontend/` e `backend/` foi preservada para reaproveitar telas, services, repositories e scripts de banco. O fluxo principal cobre exibicao de produtos, carrinho, checkout com autenticacao por telefone, criacao de pedidos, acompanhamento pelo cliente e gestao operacional pelo painel administrativo.
+O projeto roda como uma aplicacao unica em Next.js, reunindo o frontend React e a API em `/api/*`. O codigo foi organizado na raiz com uma estrutura inspirada em DDD: apresentacao em `src/presentation`, regras de negocio em `src/server/application`, dominio compartilhado em `src/server/domain`, persistencia e integracoes em `src/server/infrastructure`, e controllers/middlewares em `src/server/interfaces`. O fluxo principal cobre exibicao de produtos, carrinho, checkout com autenticacao por telefone, criacao de pedidos, acompanhamento pelo cliente e gestao operacional pelo painel administrativo.
 
 ## Sumario
 
@@ -45,7 +45,7 @@ O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o front
 - MySQL via `mysql2`.
 - JWT para sessoes de admin, cliente e carrinho.
 - Leaflet e Leaflet Draw para mapas de entrega.
-- CSS global em `frontend/src/styles/global.css`.
+- CSS global em `src/presentation/styles/global.css`.
 
 ### Infra local
 
@@ -55,41 +55,31 @@ O projeto agora pode rodar como uma aplicacao unica em Next.js, reunindo o front
 
 ```text
 .
-|-- app/
-|   |-- api/
-|   |   `-- [...path]/
-|   |-- admin/
-|   |-- carrinho/
-|   |-- checkout/
-|   |-- produto/
-|   `-- page.jsx
-|-- backend/
-|   |-- scripts/
-|   |   |-- migrate.js
-|   |   `-- seed.js
-|   `-- src/
-|       |-- config/
-|       |-- controllers/
-|       |-- docs/
-|       |-- integrations/
-|       |-- middlewares/
-|       |-- repositories/
-|       |-- services/
-|       `-- utils/
-|-- database/
-|   `-- migrations/
-|-- frontend/
-|   `-- src/
-|       |-- admin/
-|       |-- api/
-|       |-- components/
-|       |-- context/
-|       |-- navigation.js
-|       |-- pages/
-|       |-- styles/
-|       `-- utils/
-|-- scripts/
-|   `-- smoke-api.mjs
+|-- src/
+|   |-- app/
+|   |   |-- api/
+|   |   |   `-- [...path]/
+|   |   |-- admin/
+|   |   |-- carrinho/
+|   |   |-- checkout/
+|   |   |-- produto/
+|   |   `-- page.jsx
+|   |-- presentation/
+|   |   |-- admin/
+|   |   |-- api/
+|   |   |-- components/
+|   |   |-- context/
+|   |   |-- pages/
+|   |   |-- styles/
+|   |   `-- utils/
+|   `-- server/
+|       |-- application/
+|       |-- domain/
+|       |-- infrastructure/
+|       |   |-- database/
+|       |   `-- testing/
+|       `-- interfaces/
+|-- .bkp/
 |-- docker-compose.yml
 |-- next.config.js
 |-- package.json
@@ -177,8 +167,8 @@ A aplicacao ficara em `http://localhost:3000` e a API em `http://localhost:3000/
 npm run dev      # Next em http://localhost:3000
 npm run build    # build de producao
 npm start        # serve o build de producao
-npm run migrate  # aplica migrations usando backend/scripts/migrate.js
-npm run seed     # cria dados iniciais usando backend/scripts/seed.js
+npm run migrate  # aplica migrations
+npm run seed     # cria dados iniciais
 ```
 
 ## URLs principais
@@ -210,7 +200,7 @@ npm run seed     # cria dados iniciais usando backend/scripts/seed.js
 | `INTERNAL_API_KEY` | Chave para rotas internas de pagamentos e WhatsApp. |
 | `OTP_DEBUG_RETURN` | Em dev, retorna o codigo OTP na resposta. |
 | `TRUST_PROXY` | Numero de hops quando a aplicacao estiver atras de proxy/reverse proxy. |
-| `MEDIA_UPLOAD_DIR` | Diretorio para imagens espelhadas. Padrao: `backend/uploads/media`. |
+| `MEDIA_UPLOAD_DIR` | Diretorio para imagens espelhadas. Padrao: `uploads/media`. |
 | `OSRM_BASE_URL` | Base do servico OSRM para rotas. |
 | `THERMAL_PRINTER_INTERFACE` | Interface da impressora termica, ex.: `tcp://192.168.0.50:9100`. |
 | `THERMAL_PRINTER_TYPE` | Tipo da impressora, ex.: `epson`. |
@@ -229,7 +219,7 @@ Senha: delivery_secret
 Root password: root_secret
 ```
 
-As migrations ficam em `database/migrations` e sao aplicadas em ordem alfabetica pelo script `backend/scripts/migrate.js`.
+As migrations ficam em `src/server/infrastructure/database/migrations` e sao aplicadas em ordem alfabetica pelo script `src/server/infrastructure/database/scripts/migrate.js`.
 
 Tabelas principais:
 

@@ -1,0 +1,10 @@
+import * as storeRepo from '../../../infrastructure/repositories/storeRepository.js';
+
+export async function listStores(req, res, next) {
+  try {
+    const rows = await storeRepo.listActiveStores();
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+}

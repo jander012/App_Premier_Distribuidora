@@ -19,14 +19,16 @@ flowchart TB
 
 | Camada | Pasta / responsabilidade |
 | --- | --- |
-| Rotas de tela | `app/**/page.jsx` |
-| API HTTP | `app/api/[...path]/route.js` |
-| Componentes e paginas client | `frontend/src/` |
-| Regras de negocio | `backend/src/services/` |
-| SQL e persistencia | `backend/src/repositories/` |
-| Configuracao e banco | `backend/src/config/` |
-| Integracoes externas | `backend/src/integrations/` |
-| Migrations e seed | `database/migrations/`, `backend/scripts/` |
+| Rotas de tela | `src/app/**/page.jsx` |
+| API HTTP | `src/app/api/[...path]/route.js` |
+| Componentes e paginas client | `src/presentation/` |
+| Dominio compartilhado | `src/server/domain/` |
+| Regras de negocio | `src/server/application/services/` |
+| SQL e persistencia | `src/server/infrastructure/repositories/` |
+| Configuracao e banco | `src/server/infrastructure/config/` |
+| Integracoes externas | `src/server/infrastructure/integrations/` |
+| Controllers e middlewares HTTP | `src/server/interfaces/http/` |
+| Migrations e seed | `src/server/infrastructure/database/migrations/`, `src/server/infrastructure/database/scripts/` |
 
 ## Rotas de Tela
 
@@ -60,7 +62,7 @@ Exemplos:
 
 ## Dados
 
-O banco e MySQL via `mysql2`. As migrations ficam em `database/migrations` e sao aplicadas por:
+O banco e MySQL via `mysql2`. As migrations ficam em `src/server/infrastructure/database/migrations` e sao aplicadas por:
 
 ```bash
 npm run migrate
