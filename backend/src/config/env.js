@@ -41,6 +41,13 @@ function parseTrustProxy() {
   return 1;
 }
 
+function parseCorsOrigins() {
+  return (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
@@ -51,6 +58,7 @@ export const env = {
   clientJwtExpiresIn: process.env.CLIENT_JWT_EXPIRES_IN || '8h',
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',
   publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:3000',
+  corsOrigins: parseCorsOrigins(),
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',
   pixProvider: process.env.PIX_PROVIDER || 'stub',
   linxProvider: process.env.LINX_PROVIDER || 'stub',
