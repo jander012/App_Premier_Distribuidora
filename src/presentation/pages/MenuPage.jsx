@@ -10,6 +10,7 @@ export function MenuPage() {
   const { storeSlug } = useStore();
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState(null);
 
   useEffect(() => {
@@ -19,6 +20,8 @@ export function MenuPage() {
 
   useEffect(() => {
     let on = true;
+    setLoading(true);
+    setErr(null);
     (async () => {
       try {
         const [c, pr] = await Promise.all([
@@ -31,6 +34,8 @@ export function MenuPage() {
         }
       } catch (e) {
         if (on) setErr(e.message);
+      } finally {
+        if (on) setLoading(false);
       }
     })();
     return () => {
@@ -71,6 +76,7 @@ export function MenuPage() {
         </div>
       )}
       {err && <p className="err">{err}</p>}
+      {loading && <MenuSkeleton />}
       {byCat.map((cat) => (
         <section key={cat.id} id={`cat-${cat.id}`} className="menu-section">
           <div className="section-label">{cat.name}</div>
@@ -91,6 +97,36 @@ export function MenuPage() {
                   </div>
                 </div>
               </Link>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function MenuSkeleton() {
+  return (
+    <div className="menu-skeleton" aria-label="Carregando cardápio" aria-busy="true">
+      <div className="category-strip category-strip--skeleton" aria-hidden="true">
+        {[0, 1, 2, 3].map((i) => (
+          <span key={i} className="category-pill skeleton-block" />
+        ))}
+      </div>
+      {[0, 1].map((section) => (
+        <section key={section} className="menu-section" aria-hidden="true">
+          <div className="section-label skeleton-block skeleton-title" />
+          <div className="product-grid">
+            {[0, 1, 2, 3].map((item) => (
+              <div key={item} className="card product-row product-row--skeleton">
+                <div className="product-placeholder skeleton-block" />
+                <div className="product-row__body">
+                  <div className="skeleton-block skeleton-line skeleton-line--name" />
+                  <div className="skeleton-block skeleton-line" />
+                  <div className="skeleton-block skeleton-line skeleton-line--short" />
+                  <div className="skeleton-block skeleton-price" />
+                </div>
+              </div>
             ))}
           </div>
         </section>

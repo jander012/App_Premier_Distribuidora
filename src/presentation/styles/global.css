@@ -997,6 +997,86 @@ body {
   min-width: 0;
 }
 
+.menu-skeleton {
+  display: grid;
+  gap: 1.25rem;
+}
+
+.skeleton-block {
+  position: relative;
+  overflow: hidden;
+  background: #ece6dc;
+  color: transparent;
+}
+
+.skeleton-block::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  animation: skeleton-shimmer 1.25s ease-in-out infinite;
+}
+
+.category-strip--skeleton {
+  overflow: hidden;
+}
+
+.category-strip--skeleton .category-pill {
+  width: 112px;
+  height: 42px;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.skeleton-title {
+  width: 136px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.product-row--skeleton {
+  pointer-events: none;
+}
+
+.product-row--skeleton .product-placeholder {
+  background: #ece6dc;
+}
+
+.skeleton-line {
+  height: 12px;
+  margin-bottom: 0.55rem;
+  border-radius: 999px;
+}
+
+.skeleton-line--name {
+  width: 72%;
+  height: 16px;
+}
+
+.skeleton-line--short {
+  width: 54%;
+}
+
+.skeleton-price {
+  width: 86px;
+  height: 18px;
+  margin-top: 0.65rem;
+  border-radius: 999px;
+}
+
+@keyframes skeleton-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block::after {
+    animation: none;
+  }
+}
+
 .product-row__body h3 {
   color: #171717;
   font-size: 1.05rem;
