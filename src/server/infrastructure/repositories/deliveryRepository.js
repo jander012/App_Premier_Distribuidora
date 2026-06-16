@@ -40,7 +40,6 @@ export async function getDeliveryPolygonForStore(storeId) {
     );
     const legVal = leg[0]?.delivery_area_polygon;
     if (legVal == null) {
-      logPolygonInfo('get: sem polígono (tabela e legado vazios)', { storeId: sid });
       return null;
     }
     let parsed = legVal;
