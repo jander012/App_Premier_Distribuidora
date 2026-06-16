@@ -3,12 +3,26 @@ import { env } from '../../infrastructure/config/env.js';
 import { AppError } from '../../domain/shared/AppError.js';
 
 const require = createRequire(import.meta.url);
-const nt = require('node-thermal-printer');
-const ThermalPrinter = nt.printer;
-const PrinterTypes = nt.printerTypes || nt.types;
-const CharacterSet = nt.characterSet;
 
-function parsePrinterType(raw) {
+function loadThermalPrinterLibrary() {
+  try {
+    const nt = require('node-thermal-printer');
+    return {
+      ThermalPrinter: nt.printer,
+      PrinterTypes: nt.printerTypes || nt.types,
+      CharacterSet: nt.characterSet,
+    };
+  } catch (e) {
+    if (e?.code === 'MODULE_NOT_FOUND' && String(e.message || '').includes('node-thermal-printer')) {
+      throw new AppError(503, 'Biblioteca de impressao termica nao instalada (node-thermal-printer).', {
+        code: 'THERMAL_LIBRARY_NOT_INSTALLED',
+      });
+    }
+    throw e;
+  }
+}
+
+function parsePrinterType(raw, PrinterTypes) {
   const r = String(raw || 'epson').toLowerCase();
   const map = {
     epson: PrinterTypes.EPSON,
@@ -102,8 +116,9 @@ export async function printOrderThermalReceipt(order, items) {
     });
   }
 
+  const { ThermalPrinter, PrinterTypes, CharacterSet } = loadThermalPrinterLibrary();
   const printer = new ThermalPrinter({
-    type: parsePrinterType(env.thermalPrinterType),
+    type: parsePrinterType(env.thermalPrinterType, PrinterTypes),
     interface: iface,
     width: env.thermalPrinterWidth,
     characterSet: CharacterSet.PC860_PORTUGUESE,
