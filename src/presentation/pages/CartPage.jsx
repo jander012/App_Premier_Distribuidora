@@ -63,7 +63,11 @@ export function CartPage() {
               <div className="qty cart-item-card__qty">
                 <button
                   type="button"
-                  onClick={() => updateItem(line.id, { quantity: Math.max(1, line.quantity - 1) })}
+                  onClick={() => {
+                    const next = line.quantity - 1;
+                    if (next <= 0) removeItem(line.id);
+                    else updateItem(line.id, { quantity: next });
+                  }}
                 >
                   −
                 </button>

@@ -25,7 +25,41 @@ export async function listProducts(req, res, next) {
     const raw = req.query.categoryId;
     const categoryId =
       raw !== undefined && raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : undefined;
+    const rawPage = req.query.page;
+    if (rawPage !== undefined && rawPage !== '') {
+      const page = Number(rawPage);
+      const limit = Number(req.query.limit) || 24;
+      const result = await menuRepo.listProductsPage(storeId, {
+        page,
+        limit,
+        categoryId,
+        availableOnly: true,
+      });
+      return res.json(result);
+    }
     const rows = await menuRepo.listProducts({ storeId, categoryId, availableOnly: true });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listBestSellers(req, res, next) {
+  try {
+    const storeId = await storeIdFromSlug(req);
+    const limit = Number(req.query.limit) || 12;
+    const rows = await menuRepo.listBestSellingProducts(storeId, { limit });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listBuyAgain(req, res, next) {
+  try {
+    const storeId = await storeIdFromSlug(req);
+    const limit = Number(req.query.limit) || 12;
+    const rows = await menuRepo.listBuyAgainProducts(storeId, req.clientPhone, { limit });
     res.json(rows);
   } catch (e) {
     next(e);

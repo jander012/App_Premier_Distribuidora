@@ -44,6 +44,111 @@ export async function listProducts({ storeId, categoryId, availableOnly = true }
   return rows;
 }
 
+export async function listProductsPage(
+  storeId,
+  { page = 1, limit = 24, categoryId, availableOnly = true } = {}
+) {
+  if (!storeId) throw new Error('storeId obrigatório');
+  const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 48);
+  const safePage = Math.max(Number(page) || 1, 1);
+  const offset = (safePage - 1) * safeLimit;
+
+  const params = [storeId];
+  let where = 'WHERE p.store_id = $1';
+  if (availableOnly) where += ' AND p.available = true';
+  if (categoryId) {
+    params.push(categoryId);
+    where += ` AND p.category_id = $${params.length}`;
+  }
+
+  const { rows: countRows } = await query(`SELECT COUNT(*) AS n FROM products p ${where}`, params);
+  const total = countRows[0]?.n ?? 0;
+
+  const { rows } = await query(
+    `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+            COALESCE(m.public_url, p.image_url) AS image_url
+     FROM products p
+     LEFT JOIN media_assets m ON m.id = p.image_asset_id
+     ${where}
+     ORDER BY p.category_id, p.id
+     LIMIT ${safeLimit} OFFSET ${offset}`,
+    params
+  );
+
+  const loaded = offset + rows.length;
+  return {
+    items: rows,
+    total,
+    page: safePage,
+    limit: safeLimit,
+    hasMore: loaded < total,
+  };
+}
+
+const HIGHLIGHT_PRODUCT_FIELDS = `
+  p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+  COALESCE(m.public_url, p.image_url) AS image_url,
+  (
+    SELECT COUNT(*)
+    FROM product_options po
+    WHERE po.product_id = p.id AND po.active = true AND po.required_choice = true
+  ) AS required_options_count
+`;
+
+export async function listBestSellingProducts(storeId, { limit = 12 } = {}) {
+  if (!storeId) throw new Error('storeId obrigatório');
+  const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
+  const { rows } = await query(
+    `SELECT ${HIGHLIGHT_PRODUCT_FIELDS},
+            SUM(oi.quantity) AS sold_qty
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN products p ON p.id = oi.product_id AND p.store_id = o.store_id
+     LEFT JOIN media_assets m ON m.id = p.image_asset_id
+     WHERE o.store_id = $1
+       AND o.status <> 'cancelled'
+       AND p.available = true
+     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, m.public_url, p.image_url
+     HAVING sold_qty > 0
+     ORDER BY sold_qty DESC, p.name ASC
+     LIMIT ${safeLimit}`,
+    [storeId]
+  );
+  return rows.map((row) => ({
+    ...row,
+    sold_qty: Number(row.sold_qty) || 0,
+    required_options_count: Number(row.required_options_count) || 0,
+  }));
+}
+
+export async function listBuyAgainProducts(storeId, customerPhone, { limit = 12 } = {}) {
+  if (!storeId) throw new Error('storeId obrigatório');
+  if (!customerPhone) return [];
+  const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
+  const { rows } = await query(
+    `SELECT ${HIGHLIGHT_PRODUCT_FIELDS},
+            MAX(o.created_at) AS last_ordered_at,
+            SUM(oi.quantity) AS purchased_qty
+     FROM order_items oi
+     INNER JOIN orders o ON o.id = oi.order_id
+     INNER JOIN products p ON p.id = oi.product_id AND p.store_id = o.store_id
+     LEFT JOIN media_assets m ON m.id = p.image_asset_id
+     WHERE o.store_id = $1
+       AND o.customer_phone = $2
+       AND o.status <> 'cancelled'
+       AND p.available = true
+     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, m.public_url, p.image_url
+     ORDER BY last_ordered_at DESC
+     LIMIT ${safeLimit}`,
+    [storeId, customerPhone]
+  );
+  return rows.map((row) => ({
+    ...row,
+    purchased_qty: Number(row.purchased_qty) || 0,
+    required_options_count: Number(row.required_options_count) || 0,
+  }));
+}
+
 export async function getProductWithOptions(id, storeId) {
   const { rows: products } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,

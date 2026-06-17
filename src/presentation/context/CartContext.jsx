@@ -276,6 +276,36 @@ export function CartProvider({ children }) {
     [refreshSummary]
   );
 
+  const setProductQuantity = useCallback(
+    async (productId, quantity) => {
+      const q = Math.max(0, Math.floor(Number(quantity) || 0));
+      await ensureCartToken();
+      const token = getCartToken();
+      if (!token) throw new Error('Não foi possível iniciar o carrinho');
+
+      const data = await api.cartGet('/cart/me', { cartToken: token });
+      const line = (data.items || []).find(
+        (item) =>
+          item.productId === productId &&
+          (!item.optionIds || item.optionIds.length === 0) &&
+          !item.note
+      );
+
+      if (q === 0) {
+        if (line) await removeItem(line.id);
+        else await refreshSummary();
+        return;
+      }
+
+      if (line) {
+        await updateItem(line.id, { quantity: q });
+      } else {
+        await addItem({ productId, quantity: q, optionIds: [] });
+      }
+    },
+    [ensureCartToken, addItem, updateItem, removeItem, refreshSummary]
+  );
+
   const clearLocalCart = useCallback(() => {
     clearCartAuth();
     setCartId(null);
@@ -295,6 +325,7 @@ export function CartProvider({ children }) {
       addItem,
       updateItem,
       removeItem,
+      setProductQuantity,
       clearLocalCart,
       deliveryKm,
       setDeliveryKm,
@@ -313,6 +344,7 @@ export function CartProvider({ children }) {
       addItem,
       updateItem,
       removeItem,
+      setProductQuantity,
       clearLocalCart,
       deliveryKm,
       setDeliveryKm,

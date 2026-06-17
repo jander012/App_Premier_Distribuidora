@@ -39,6 +39,8 @@ const routes = [
   ['POST', '/auth/client/request-code', [authClientController.requestCode]],
   ['POST', '/auth/client/verify-code', [authClientController.verifyCode]],
   ['GET', '/categories', [menuController.listCategories]],
+  ['GET', '/products/best-sellers', [menuController.listBestSellers]],
+  ['GET', '/products/buy-again', [authenticateClient, menuController.listBuyAgain]],
   ['GET', '/products', [menuController.listProducts]],
   ['GET', '/products/:id', [menuController.getProduct]],
   ['GET', '/customers/me', [authenticateClient, customerController.getMe]],
