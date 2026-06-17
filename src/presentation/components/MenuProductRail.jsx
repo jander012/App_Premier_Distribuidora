@@ -1,5 +1,25 @@
 import { MenuProductCard } from './MenuProductCard.jsx';
 
+function formatPromotionMeta(product) {
+  const until = product.promotion_valid_until;
+  const from = product.promotion_valid_from;
+  if (until) {
+    const d = new Date(until);
+    if (!Number.isNaN(d.getTime())) {
+      const label = d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      return `Promoção até ${label}`;
+    }
+  }
+  if (from) {
+    const d = new Date(from);
+    if (!Number.isNaN(d.getTime())) {
+      const label = d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      return `Promoção a partir de ${label}`;
+    }
+  }
+  return 'Destaque do dia';
+}
+
 export function MenuProductRail({ title, subtitle, products, mode = 'featured' }) {
   if (!products?.length) return null;
 
@@ -23,6 +43,11 @@ export function MenuProductRail({ title, subtitle, products, mode = 'featured' }
                   )}
                   {mode === 'featured' && p.sold_qty > 0 && (
                     <p className="menu-product-card__meta muted">{p.sold_qty} vendidos</p>
+                  )}
+                  {mode === 'promotion' && (
+                    <p className="menu-product-card__meta menu-product-card__meta--promo">
+                      {formatPromotionMeta(p)}
+                    </p>
                   )}
                 </>
               }

@@ -46,19 +46,24 @@ export async function listProducts({ storeId, categoryId, availableOnly = true }
 
 export async function listProductsPage(
   storeId,
-  { page = 1, limit = 24, categoryId, availableOnly = true } = {}
+  { page = 1, limit = 24, categoryId, q, availableOnly = true } = {}
 ) {
   if (!storeId) throw new Error('storeId obrigatório');
   const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 48);
   const safePage = Math.max(Number(page) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
+  const search = q && String(q).trim() ? `%${String(q).trim()}%` : null;
 
   const params = [storeId];
   let where = 'WHERE p.store_id = $1';
   if (availableOnly) where += ' AND p.available = true';
-  if (categoryId) {
+  if (categoryId && !search) {
     params.push(categoryId);
     where += ` AND p.category_id = $${params.length}`;
+  }
+  if (search) {
+    params.push(search);
+    where += ` AND (p.name LIKE $${params.length} OR COALESCE(p.description,'') LIKE $${params.length})`;
   }
 
   const { rows: countRows } = await query(`SELECT COUNT(*) AS n FROM products p ${where}`, params);

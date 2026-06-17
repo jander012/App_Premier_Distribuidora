@@ -9,6 +9,10 @@ const routeComponents = {
   settings: dynamic(() => import('../../../presentation/admin/pages/AdminSettingsPage.jsx').then((m) => m.AdminSettingsPage), { ssr: false }),
   delivery: dynamic(() => import('../../../presentation/admin/pages/AdminDeliveryPage.jsx').then((m) => m.AdminDeliveryPage), { ssr: false }),
   coupons: dynamic(() => import('../../../presentation/admin/pages/AdminCouponsPage.jsx').then((m) => m.AdminCouponsPage), { ssr: false }),
+  promotions: dynamic(
+    () => import('../../../presentation/admin/pages/AdminPromotionsPage.jsx').then((m) => m.AdminPromotionsPage),
+    { ssr: false }
+  ),
   media: dynamic(() => import('../../../presentation/admin/pages/AdminMediaPage.jsx').then((m) => m.AdminMediaPage), { ssr: false }),
   products: dynamic(
     () => import('../../../presentation/admin/pages/AdminProductsListPage.jsx').then((m) => m.AdminProductsListPage),

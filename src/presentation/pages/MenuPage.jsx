@@ -8,10 +8,14 @@ import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';
 const ALL_CATEGORIES = 'all';
 const PAGE_SIZE = 24;
+const DESTAQUE_FALLBACK_COUNT = 4;
 
-function buildProductsPath(storeSlug, filterCategoryId, page) {
+function buildProductsPath(storeSlug, filterCategoryId, page, q) {
   const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
-  if (filterCategoryId !== ALL_CATEGORIES) {
+  const trimmedQ = q?.trim();
+  if (trimmedQ) {
+    params.set('q', trimmedQ);
+  } else if (filterCategoryId !== ALL_CATEGORIES) {
     params.set('categoryId', String(filterCategoryId));
   }
   return withStoreQuery(`/products?${params.toString()}`, storeSlug);
@@ -27,7 +31,10 @@ export function MenuPage() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [filterCategoryId, setFilterCategoryId] = useState(null);
+  const [searchQ, setSearchQ] = useState('');
+  const [searchQDebounced, setSearchQDebounced] = useState('');
   const [bestSellers, setBestSellers] = useState([]);
+  const [promotions, setPromotions] = useState([]);
   const [buyAgain, setBuyAgain] = useState([]);
   const [clientLoggedIn, setClientLoggedIn] = useState(() => !!getClientToken());
   const [loadingCategories, setLoadingCategories] = useState(true);
@@ -42,6 +49,11 @@ export function MenuPage() {
     const p = params.get('phone');
     if (p) setPhone(p);
   }, [params, setPhone]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setSearchQDebounced(searchQ.trim()), 350);
+    return () => clearTimeout(t);
+  }, [searchQ]);
 
   useEffect(() => {
     let on = true;
@@ -75,14 +87,17 @@ export function MenuPage() {
       const loggedIn = !!getClientToken();
       setClientLoggedIn(loggedIn);
       const bestPromise = api.get(withStoreQuery('/products/best-sellers?limit=12', storeSlug));
+      const promoPromise = api.get(withStoreQuery('/products/promotions?limit=12', storeSlug));
       const againPromise = loggedIn
         ? api.clientGet(withStoreQuery('/products/buy-again?limit=12', storeSlug))
         : Promise.resolve([]);
-      const [best, again] = await Promise.all([bestPromise, againPromise]);
+      const [best, promo, again] = await Promise.all([bestPromise, promoPromise, againPromise]);
       setBestSellers(Array.isArray(best) ? best : []);
+      setPromotions(Array.isArray(promo) ? promo : []);
       setBuyAgain(loggedIn && Array.isArray(again) ? again : []);
     } catch {
       setBestSellers([]);
+      setPromotions([]);
       setBuyAgain([]);
     } finally {
       setLoadingHighlights(false);
@@ -100,7 +115,7 @@ export function MenuPage() {
 
   const fetchPage = useCallback(
     async (pageNum) => {
-      const data = await api.get(buildProductsPath(storeSlug, filterCategoryId, pageNum));
+      const data = await api.get(buildProductsPath(storeSlug, filterCategoryId, pageNum, searchQDebounced));
       return {
         items: Array.isArray(data?.items) ? data.items : [],
         total: Number(data?.total) || 0,
@@ -108,7 +123,7 @@ export function MenuPage() {
         page: Number(data?.page) || pageNum,
       };
     },
-    [storeSlug, filterCategoryId]
+    [storeSlug, filterCategoryId, searchQDebounced]
   );
 
   useEffect(() => {
@@ -140,7 +155,7 @@ export function MenuPage() {
     return () => {
       on = false;
     };
-  }, [filterCategoryId, fetchPage]);
+  }, [filterCategoryId, searchQDebounced, fetchPage]);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loadingProducts) return;
@@ -175,9 +190,30 @@ export function MenuPage() {
   }, [hasMore, loadingProducts, loadMore, products.length]);
 
   const activeCategoryName = useMemo(() => {
+    if (searchQDebounced) return `Busca: “${searchQDebounced}”`;
     if (filterCategoryId === ALL_CATEGORIES) return 'Todos os produtos';
     return categories.find((c) => c.id === filterCategoryId)?.name ?? 'Produtos';
-  }, [categories, filterCategoryId]);
+  }, [categories, filterCategoryId, searchQDebounced]);
+
+  const hasPromotions = promotions.length > 0;
+  const destaqueRail = useMemo(() => {
+    if (hasPromotions) {
+      return {
+        title: 'Destaques e promoções',
+        subtitle: 'Ofertas selecionadas para você',
+        products: promotions,
+        mode: 'promotion',
+      };
+    }
+    const topSellers = bestSellers.slice(0, DESTAQUE_FALLBACK_COUNT);
+    if (topSellers.length === 0) return null;
+    return {
+      title: 'Destaques',
+      subtitle: 'Os 4 mais vendidos da loja',
+      products: topSellers,
+      mode: 'featured',
+    };
+  }, [hasPromotions, promotions, bestSellers]);
 
   const countLabel =
     total > 0
@@ -201,7 +237,26 @@ export function MenuPage() {
           <span>Entrega rápida</span>
         </div>
       </section>
-      {categories.length > 0 && (
+      <div className="menu-search">
+        <label className="menu-search__label" htmlFor="menu-product-search">
+          Buscar produtos
+        </label>
+        <input
+          id="menu-product-search"
+          type="search"
+          className="menu-search__input"
+          placeholder="Nome ou descrição…"
+          value={searchQ}
+          onChange={(e) => setSearchQ(e.target.value)}
+          autoComplete="off"
+        />
+        {searchQ && (
+          <button type="button" className="menu-search__clear btn btn-ghost" onClick={() => setSearchQ('')}>
+            Limpar
+          </button>
+        )}
+      </div>
+      {categories.length > 0 && !searchQDebounced && (
         <CategoryStrip
           categories={categories}
           value={filterCategoryId}
@@ -217,7 +272,17 @@ export function MenuPage() {
             <MenuRailSkeleton />
           ) : (
             <>
-              <MenuProductRail title="Mais vendidos" products={bestSellers} mode="featured" />
+              {destaqueRail && (
+                <MenuProductRail
+                  title={destaqueRail.title}
+                  subtitle={destaqueRail.subtitle}
+                  products={destaqueRail.products}
+                  mode={destaqueRail.mode}
+                />
+              )}
+              {hasPromotions && (
+                <MenuProductRail title="Mais vendidos" products={bestSellers} mode="featured" />
+              )}
               {clientLoggedIn ? (
                 <MenuProductRail
                   title="Comprar novamente"
@@ -236,7 +301,9 @@ export function MenuPage() {
             {loadingProducts ? (
               <ProductGridSkeleton />
             ) : products.length === 0 ? (
-              <p className="muted">Nenhum produto nesta categoria.</p>
+              <p className="muted">
+                {searchQDebounced ? 'Nenhum produto encontrado para esta busca.' : 'Nenhum produto nesta categoria.'}
+              </p>
             ) : (
               <>
                 <div className="product-grid">

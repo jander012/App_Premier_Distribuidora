@@ -1,4 +1,5 @@
 import * as menuRepo from '../../../infrastructure/repositories/menuRepository.js';
+import * as promoRepo from '../../../infrastructure/repositories/productPromotionRepository.js';
 import * as storeRepo from '../../../infrastructure/repositories/storeRepository.js';
 import { AppError } from '../../../domain/shared/AppError.js';
 
@@ -26,13 +27,15 @@ export async function listProducts(req, res, next) {
     const categoryId =
       raw !== undefined && raw !== '' && !Number.isNaN(Number(raw)) ? Number(raw) : undefined;
     const rawPage = req.query.page;
+    const q = req.query.q != null && String(req.query.q).trim() ? String(req.query.q).trim() : undefined;
     if (rawPage !== undefined && rawPage !== '') {
       const page = Number(rawPage);
       const limit = Number(req.query.limit) || 24;
       const result = await menuRepo.listProductsPage(storeId, {
         page,
         limit,
-        categoryId,
+        categoryId: q ? undefined : categoryId,
+        q,
         availableOnly: true,
       });
       return res.json(result);
@@ -60,6 +63,17 @@ export async function listBuyAgain(req, res, next) {
     const storeId = await storeIdFromSlug(req);
     const limit = Number(req.query.limit) || 12;
     const rows = await menuRepo.listBuyAgainProducts(storeId, req.clientPhone, { limit });
+    res.json(rows);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function listPromotions(req, res, next) {
+  try {
+    const storeId = await storeIdFromSlug(req);
+    const limit = Number(req.query.limit) || 12;
+    const rows = await promoRepo.listActivePromotedProducts(storeId, { limit });
     res.json(rows);
   } catch (e) {
     next(e);

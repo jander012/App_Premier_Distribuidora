@@ -18,6 +18,7 @@ import * as adminController from '../../../server/interfaces/http/controllers/ad
 import * as storeController from '../../../server/interfaces/http/controllers/storeController.js';
 import * as adminDeliveryController from '../../../server/interfaces/http/controllers/adminDeliveryController.js';
 import * as adminCouponController from '../../../server/interfaces/http/controllers/adminCouponController.js';
+import * as adminPromotionController from '../../../server/interfaces/http/controllers/adminPromotionController.js';
 import * as adminMediaController from '../../../server/interfaces/http/controllers/adminMediaController.js';
 import * as mediaFileController from '../../../server/interfaces/http/controllers/mediaFileController.js';
 import * as adminPlatformController from '../../../server/interfaces/http/controllers/adminPlatformController.js';
@@ -40,6 +41,7 @@ const routes = [
   ['POST', '/auth/client/verify-code', [authClientController.verifyCode]],
   ['GET', '/categories', [menuController.listCategories]],
   ['GET', '/products/best-sellers', [menuController.listBestSellers]],
+  ['GET', '/products/promotions', [menuController.listPromotions]],
   ['GET', '/products/buy-again', [authenticateClient, menuController.listBuyAgain]],
   ['GET', '/products', [menuController.listProducts]],
   ['GET', '/products/:id', [menuController.getProduct]],
@@ -97,6 +99,10 @@ const routes = [
   ['POST', '/admin/coupons', [...adminProtected, adminCouponController.create]],
   ['PATCH', '/admin/coupons/:id', [...adminProtected, adminCouponController.patch]],
   ['DELETE', '/admin/coupons/:id', [...adminProtected, adminCouponController.remove]],
+  ['GET', '/admin/promotions', [...adminProtected, adminPromotionController.list]],
+  ['POST', '/admin/promotions', [...adminProtected, adminPromotionController.create]],
+  ['PATCH', '/admin/promotions/:id', [...adminProtected, adminPromotionController.patch]],
+  ['DELETE', '/admin/promotions/:id', [...adminProtected, adminPromotionController.remove]],
   ['GET', '/admin/media', [...adminProtected, adminMediaController.listMedia]],
   ['POST', '/admin/media', [...adminProtected, adminMediaController.createMedia]],
   ['DELETE', '/admin/media/:id', [...adminProtected, adminMediaController.deleteMedia]],

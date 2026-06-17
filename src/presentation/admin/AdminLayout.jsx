@@ -269,6 +269,9 @@ export function AdminLayout({ children }) {
           <NavLink to="/admin/painel/cupons" title="Cupons" onClick={closeMobileNav}>
             {!collapsed || isMobileNav ? 'Cupons' : 'U'}
           </NavLink>
+          <NavLink to="/admin/painel/promocoes" title="Promoções" onClick={closeMobileNav}>
+            {!collapsed || isMobileNav ? 'Promoções' : 'O'}
+          </NavLink>
           <NavLink to="/admin/painel/midias" title="Imagens" onClick={closeMobileNav}>
             {!collapsed || isMobileNav ? 'Imagens' : 'I'}
           </NavLink>
