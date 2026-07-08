@@ -81,6 +81,15 @@ export async function findPolygonZoneForPoint(storeId, lat, lng) {
   return null;
 }
 
+export function formatPolygonZoneMatch(zone) {
+  if (!zone) return null;
+  return {
+    id: zone.id,
+    name: zone.name,
+    fee: Number(zone.fee),
+  };
+}
+
 /**
  * @param {number} storeId
  * @param {{ distanceKm?: number|null, at?: Date, destLat?: number|null, destLng?: number|null }} opts

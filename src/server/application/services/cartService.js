@@ -44,7 +44,11 @@ export async function getCartSummary(
   }
 
   let deliveryFee = 0;
+  let deliveryRegion = null;
   if (storeId) {
+    deliveryRegion = deliveryPricingService.formatPolygonZoneMatch(
+      await deliveryPricingService.findPolygonZoneForPoint(storeId, deliveryLat, deliveryLng)
+    );
     deliveryFee = await deliveryPricingService.computeDeliveryFeeForStore(storeId, {
       distanceKm: km,
       at,
@@ -89,6 +93,7 @@ export async function getCartSummary(
     total: subtotal + deliveryFee,
     deliveryDistanceKm: km,
     deliveryDistanceSource,
+    deliveryRegion,
   };
 }
 

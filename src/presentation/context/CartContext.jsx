@@ -163,6 +163,7 @@ export function CartProvider({ children }) {
       const data = await loadOnce();
       setSummary(data);
       if (data?.cartId) setCartId(String(data.cartId));
+      return data;
     } catch (e) {
       if (e.status === 401 || e.status === 404) {
         clearCartAuth();
@@ -175,14 +176,18 @@ export function CartProvider({ children }) {
             const data = await api.cartGet(path, { cartToken: t2 });
             setSummary(data);
             if (data?.cartId) setCartId(String(data.cartId));
+            return data;
           } catch (e2) {
             setError(e2.message);
             setSummary(null);
+            return null;
           }
         }
+        return null;
       } else {
         setError(e.message);
         setSummary(null);
+        return null;
       }
     } finally {
       setLoading(false);

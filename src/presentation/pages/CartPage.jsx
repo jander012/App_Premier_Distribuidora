@@ -126,6 +126,12 @@ export function CartPage() {
               <span className="muted">Taxa de entrega</span>
               <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
             </div>
+            {summary.deliveryRegion?.name && (
+              <div className="row-between">
+                <span className="muted">Região de entrega</span>
+                <span>{summary.deliveryRegion.name}</span>
+              </div>
+            )}
             <div className="row-between" style={{ marginTop: '0.5rem', fontWeight: 700 }}>
               <span>Total</span>
               <span className="price">R$ {Number(summary.total).toFixed(2)}</span>

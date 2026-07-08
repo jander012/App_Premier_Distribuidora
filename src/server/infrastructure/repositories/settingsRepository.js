@@ -16,6 +16,7 @@ export async function updateStoreConfig(storeId, patch) {
     'delivery_use_per_km_pricing',
     'delivery_origin_lat',
     'delivery_origin_lng',
+    'delivery_origin_address',
     'delivery_area_polygon',
     'menu_base_url',
     'whatsapp_welcome_template',

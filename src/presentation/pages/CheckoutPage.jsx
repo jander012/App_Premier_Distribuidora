@@ -30,7 +30,7 @@ function applyIfPresent(setter, value) {
 export function CheckoutPage() {
   const nav = useNavigate();
   const { storeSlug } = useStore();
-  const { phone, setPhone, summary, deliveryKm, setDeliveryKm, deliveryPublic, setDeliveryDest, clearLocalCart } =
+  const { phone, setPhone, summary, refreshSummary, deliveryKm, setDeliveryKm, deliveryPublic, setDeliveryDest, clearLocalCart } =
     useCart();
   const [loadingProfile, setLoadingProfile] = useState(false);
   const [submitErr, setSubmitErr] = useState(null);
@@ -264,6 +264,11 @@ export function CheckoutPage() {
 
     setBusy(true);
     try {
+      const latestSummary = await refreshSummary();
+      if (!latestSummary) {
+        setSubmitErr('Não foi possível atualizar a taxa de entrega para a região selecionada. Tente novamente.');
+        return;
+      }
       const kmRaw = deliveryKm.trim().replace(',', '.');
       const kmNum = kmRaw === '' ? NaN : Number(kmRaw);
       const orderBody = {
@@ -347,6 +352,12 @@ export function CheckoutPage() {
               <span>Taxa de entrega</span>
               <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
             </div>
+            {summary.deliveryRegion?.name && (
+              <div className="row-between">
+                <span>Região de entrega</span>
+                <span>{summary.deliveryRegion.name}</span>
+              </div>
+            )}
             {appliedCoupon && appliedCoupon.discountAmount > 0 && (
               <div className="row-between">
                 <span>Cupom ({appliedCoupon.code})</span>

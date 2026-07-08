@@ -23,6 +23,9 @@ export function AdminDeliveryPage() {
   const [selectedPolygonZone, setSelectedPolygonZone] = useState(0);
   /** Origem da loja (saída do entregador) — pino laranja no mapa */
   const [mapOrigin, setMapOrigin] = useState({ lat: null, lng: null });
+  const [originAddress, setOriginAddress] = useState('');
+  const [geocodingOrigin, setGeocodingOrigin] = useState(false);
+  const [locatingBrowser, setLocatingBrowser] = useState(false);
   /** JSON do último GET — se o estado do mapa difere, o PUT envia deliveryAreaPolygon. */
   const serverPolygonJsonRef = useRef(JSON.stringify(null));
   /** Impede um segundo GET (ex. Strict Mode) de apagar o desenho local antes de salvar. */
@@ -35,6 +38,79 @@ export function AdminDeliveryPage() {
   const handleStoreOriginChange = useCallback((o) => {
     setMapOrigin({ lat: o.lat, lng: o.lng });
   }, []);
+
+  async function geocodeStoreOrigin() {
+    const q = originAddress.trim();
+    if (!q) {
+      setErr('Informe o endereço da loja para localizar no mapa.');
+      return;
+    }
+    setErr(null);
+    setSaved(false);
+    setGeocodingOrigin(true);
+    try {
+      const params = new URLSearchParams({
+        q,
+        format: 'jsonv2',
+        limit: '1',
+        countrycodes: 'br',
+        addressdetails: '1',
+      });
+      const res = await fetch(`https://nominatim.openstreetmap.org/search?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) throw new Error('Não foi possível buscar o endereço da loja.');
+      const rows = await res.json();
+      const hit = Array.isArray(rows) ? rows[0] : null;
+      const lat = Number(hit?.lat);
+      const lng = Number(hit?.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+        throw new Error('Endereço da loja não encontrado. Tente incluir cidade, UF e CEP.');
+      }
+      setMapOrigin({ lat, lng });
+      if (hit?.display_name) setOriginAddress(hit.display_name);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setGeocodingOrigin(false);
+    }
+  }
+
+  function useBrowserLocationForOrigin() {
+    if (!navigator.geolocation) {
+      setErr('Seu navegador não oferece suporte à localização.');
+      return;
+    }
+    setErr(null);
+    setSaved(false);
+    setLocatingBrowser(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const lat = Number(position.coords.latitude);
+        const lng = Number(position.coords.longitude);
+        if (Number.isFinite(lat) && Number.isFinite(lng)) {
+          setMapOrigin({ lat, lng });
+        } else {
+          setErr('Não foi possível ler uma localização válida do navegador.');
+        }
+        setLocatingBrowser(false);
+      },
+      (error) => {
+        const messages = {
+          1: 'Permissão de localização negada pelo navegador.',
+          2: 'Localização indisponível no momento.',
+          3: 'Tempo esgotado ao buscar a localização.',
+        };
+        setErr(messages[error.code] || 'Não foi possível pegar a localização do navegador.');
+        setLocatingBrowser(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 12000,
+        maximumAge: 60000,
+      }
+    );
+  }
 
   const load = useCallback(async (opts = {}) => {
     const forcePolygon = opts.forcePolygonFromServer === true;
@@ -75,6 +151,7 @@ export function AdminDeliveryPage() {
         lat: d.deliveryOriginLat != null ? Number(d.deliveryOriginLat) : null,
         lng: d.deliveryOriginLng != null ? Number(d.deliveryOriginLng) : null,
       });
+      setOriginAddress(d.deliveryOriginAddress || '');
       const norm = normalizePolygonForMap(d.deliveryAreaPolygon);
       serverPolygonJsonRef.current = JSON.stringify(norm);
       if (forcePolygon || !pendingLocalMapEditRef.current) {
@@ -184,6 +261,7 @@ export function AdminDeliveryPage() {
           mapOrigin.lat != null && Number.isFinite(mapOrigin.lat) ? mapOrigin.lat : null,
         deliveryOriginLng:
           mapOrigin.lng != null && Number.isFinite(mapOrigin.lng) ? mapOrigin.lng : null,
+        deliveryOriginAddress: originAddress.trim() || null,
         zones: zones.map((z, idx) => ({
           maxKm: Number(String(z.maxKm).replace(',', '.')),
           fee: Number(String(z.fee).replace(',', '.')),
@@ -325,10 +403,39 @@ export function AdminDeliveryPage() {
 
         <h2 style={{ fontSize: '1.05rem' }}>Mapa: origem da loja + área de entrega</h2>
         <p className="muted" style={{ fontSize: '0.82rem' }}>
-          <strong>Pino laranja</strong>: saída da loja / ponto onde o entregador inicia o percurso (obrigatório para
-          calcular taxa por <em>rota</em>). <strong>Polígono azul</strong>: região atendida (opcional). Use a barra à
-          esquerda para desenhar o polígono; arraste o pino laranja para posicionar a origem.
+          Primeiro localize o <strong>endereço da loja</strong>. O mapa usa esse ponto como origem para desenhar a área
+          de entrega e calcular taxa por <em>rota</em>. Depois ajuste o pino laranja se necessário e desenhe o
+          polígono azul.
         </p>
+        <div className="field">
+          <label>Endereço da loja</label>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <input
+              value={originAddress}
+              onChange={(e) => setOriginAddress(e.target.value)}
+              placeholder="Rua, número, bairro, cidade - UF"
+              style={{ flex: '1 1 280px' }}
+            />
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ width: 'auto' }}
+              disabled={geocodingOrigin}
+              onClick={geocodeStoreOrigin}
+            >
+              {geocodingOrigin ? 'Buscando...' : 'Buscar no mapa'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-ghost"
+              style={{ width: 'auto' }}
+              disabled={locatingBrowser}
+              onClick={useBrowserLocationForOrigin}
+            >
+              {locatingBrowser ? 'Localizando...' : 'Usar minha localização'}
+            </button>
+          </div>
+        </div>
         {mapOrigin.lat != null && mapOrigin.lng != null && (
           <p className="muted" style={{ fontSize: '0.78rem', marginTop: 0 }}>
             Origem salva neste formulário: {mapOrigin.lat.toFixed(6)}, {mapOrigin.lng.toFixed(6)}

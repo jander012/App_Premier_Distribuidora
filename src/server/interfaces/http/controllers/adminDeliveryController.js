@@ -21,6 +21,7 @@ async function buildDeliveryPayload(storeId) {
     deliveryUsePerKmPricing: Boolean(config?.delivery_use_per_km_pricing),
     deliveryOriginLat: config?.delivery_origin_lat != null ? Number(config.delivery_origin_lat) : null,
     deliveryOriginLng: config?.delivery_origin_lng != null ? Number(config.delivery_origin_lng) : null,
+    deliveryOriginAddress: config?.delivery_origin_address || '',
     deliveryAreaPolygon: parseDeliveryPolygon(areaPolygon),
     polygonZones: polygonZones.map((z, idx) => ({
       id: z.id,
@@ -86,6 +87,8 @@ export async function putDelivery(req, res, next) {
     if (b.deliveryOriginLat !== undefined) patch.delivery_origin_lat = numOrNull(b.deliveryOriginLat);
     if (b.delivery_origin_lng !== undefined) patch.delivery_origin_lng = numOrNull(b.delivery_origin_lng);
     if (b.deliveryOriginLng !== undefined) patch.delivery_origin_lng = numOrNull(b.deliveryOriginLng);
+    if (b.delivery_origin_address !== undefined) patch.delivery_origin_address = String(b.delivery_origin_address || '').trim() || null;
+    if (b.deliveryOriginAddress !== undefined) patch.delivery_origin_address = String(b.deliveryOriginAddress || '').trim() || null;
     if (b.deliveryMinTripFee !== undefined || b.delivery_min_trip_fee !== undefined) {
       patch.delivery_min_trip_fee = Number(b.deliveryMinTripFee ?? b.delivery_min_trip_fee ?? 0);
     }
