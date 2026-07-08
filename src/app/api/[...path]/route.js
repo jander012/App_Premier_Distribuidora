@@ -246,7 +246,8 @@ function errorResponse(error) {
 
 async function handle(request, context) {
   const url = new URL(request.url);
-  const pathname = `/${(context.params?.path || []).join('/')}`;
+  const params = await context.params;
+  const pathname = `/${(params?.path || []).join('/')}`;
   const matched = matchRoute(request.method, pathname);
 
   if (!matched) {

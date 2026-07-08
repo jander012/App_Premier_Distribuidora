@@ -48,14 +48,14 @@ export function CustomerOrdersPage() {
     setErr(null);
     setOtpHint('');
     if (!phone || phone.length < 10) {
-      setErr('Informe um celular vÃ¡lido com DDD');
+      setErr('Informe um celular válido com DDD');
       return;
     }
     setBusy(true);
     try {
       const res = await api.post('/auth/client/request-code', { phone });
       setOtpSent(true);
-      if (res.debugCode) setOtpHint(`CÃ³digo de teste: ${res.debugCode}`);
+      if (res.debugCode) setOtpHint(`Código de teste: ${res.debugCode}`);
     } catch (e) {
       setErr(e.message);
     } finally {
@@ -97,13 +97,13 @@ export function CustomerOrdersPage() {
           </div>
           {!otpSent ? (
             <button type="button" className="btn btn-primary" disabled={busy} onClick={requestOtp}>
-              Receber cÃ³digo
+              Receber código
             </button>
           ) : (
             <>
               {otpHint && <p className="muted" style={{ fontSize: '0.85rem' }}>{otpHint}</p>}
               <div className="field">
-                <label>CÃ³digo de 6 dÃ­gitos</label>
+                <label>Código de 6 dígitos</label>
                 <input inputMode="numeric" value={otpCode} onChange={(e) => setOtpCode(e.target.value)} maxLength={6} />
               </div>
               <button type="button" className="btn btn-primary" disabled={busy} onClick={verifyOtp}>
@@ -120,7 +120,7 @@ export function CustomerOrdersPage() {
         <section className="card">
           <strong>Nenhum pedido encontrado</strong>
           <p className="muted" style={{ marginBottom: 0 }}>
-            Quando vocÃª finalizar pedidos com este celular, eles aparecerÃ£o aqui.
+            Quando você finalizar pedidos com este celular, eles aparecerão aqui.
           </p>
         </section>
       )}
