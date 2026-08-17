@@ -7,6 +7,10 @@ import { normalizePolygonForMap } from '../../utils/normalizePolygon.js';
 
 const DAY_LABELS = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
 
+function formatOriginCoordinates(lat, lng) {
+  return `${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}`;
+}
+
 export function AdminDeliveryPage() {
   const [data, setData] = useState(null);
   const [err, setErr] = useState(null);
@@ -35,9 +39,34 @@ export function AdminDeliveryPage() {
    * @param {{ forcePolygonFromServer?: boolean }} [opts]
    * forcePolygonFromServer: após salvar, alinha estado com a API.
    */
-  const handleStoreOriginChange = useCallback((o) => {
-    setMapOrigin({ lat: o.lat, lng: o.lng });
+  const reverseGeocodeOrigin = useCallback(async (lat, lng) => {
+    const la = Number(lat);
+    const ln = Number(lng);
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
+    try {
+      const params = new URLSearchParams({
+        lat: String(la),
+        lon: String(ln),
+        format: 'jsonv2',
+        addressdetails: '1',
+      });
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const label = String(data?.display_name || '').trim();
+      setOriginAddress(label || formatOriginCoordinates(la, ln));
+    } catch {
+      setOriginAddress(formatOriginCoordinates(la, ln));
+    }
   }, []);
+
+  const handleStoreOriginChange = useCallback((o) => {
+    setSaved(false);
+    setMapOrigin({ lat: o.lat, lng: o.lng });
+    reverseGeocodeOrigin(o.lat, o.lng);
+  }, [reverseGeocodeOrigin]);
 
   async function geocodeStoreOrigin() {
     const q = originAddress.trim();
@@ -90,6 +119,7 @@ export function AdminDeliveryPage() {
         const lng = Number(position.coords.longitude);
         if (Number.isFinite(lat) && Number.isFinite(lng)) {
           setMapOrigin({ lat, lng });
+          reverseGeocodeOrigin(lat, lng);
         } else {
           setErr('Não foi possível ler uma localização válida do navegador.');
         }
@@ -147,11 +177,19 @@ export function AdminDeliveryPage() {
       }));
       setPolygonZones(nextPolygonZones);
       setSelectedPolygonZone((idx) => Math.min(idx, Math.max(nextPolygonZones.length - 1, 0)));
+      const loadedLat = d.deliveryOriginLat != null ? Number(d.deliveryOriginLat) : null;
+      const loadedLng = d.deliveryOriginLng != null ? Number(d.deliveryOriginLng) : null;
+      const loadedAddress = String(d.deliveryOriginAddress || '').trim();
       setMapOrigin({
-        lat: d.deliveryOriginLat != null ? Number(d.deliveryOriginLat) : null,
-        lng: d.deliveryOriginLng != null ? Number(d.deliveryOriginLng) : null,
+        lat: loadedLat,
+        lng: loadedLng,
       });
-      setOriginAddress(d.deliveryOriginAddress || '');
+      setOriginAddress(
+        loadedAddress ||
+          (Number.isFinite(loadedLat) && Number.isFinite(loadedLng)
+            ? formatOriginCoordinates(loadedLat, loadedLng)
+            : '')
+      );
       const norm = normalizePolygonForMap(d.deliveryAreaPolygon);
       serverPolygonJsonRef.current = JSON.stringify(norm);
       if (forcePolygon || !pendingLocalMapEditRef.current) {
@@ -261,7 +299,11 @@ export function AdminDeliveryPage() {
           mapOrigin.lat != null && Number.isFinite(mapOrigin.lat) ? mapOrigin.lat : null,
         deliveryOriginLng:
           mapOrigin.lng != null && Number.isFinite(mapOrigin.lng) ? mapOrigin.lng : null,
-        deliveryOriginAddress: originAddress.trim() || null,
+        deliveryOriginAddress:
+          originAddress.trim() ||
+          (mapOrigin.lat != null && mapOrigin.lng != null
+            ? formatOriginCoordinates(mapOrigin.lat, mapOrigin.lng)
+            : null),
         zones: zones.map((z, idx) => ({
           maxKm: Number(String(z.maxKm).replace(',', '.')),
           fee: Number(String(z.fee).replace(',', '.')),

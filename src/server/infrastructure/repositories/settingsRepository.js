@@ -8,6 +8,11 @@ export async function getStoreConfig(storeId) {
 }
 
 export async function updateStoreConfig(storeId, patch) {
+  await query(
+    `INSERT IGNORE INTO store_configs (store_id, delivery_fee, fiscal_uf) VALUES ($1, 5.00, 'MT')`,
+    [storeId]
+  );
+
   const allowed = [
     'delivery_fee',
     'delivery_use_distance_zones',
