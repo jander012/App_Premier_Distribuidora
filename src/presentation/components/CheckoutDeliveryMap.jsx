@@ -6,11 +6,15 @@ import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
+function imageUrl(asset) {
+  return typeof asset === 'string' ? asset : asset?.src;
+}
+
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: markerIcon2x,
-  iconUrl: markerIcon,
-  shadowUrl: markerShadow,
+  iconRetinaUrl: imageUrl(markerIcon2x),
+  iconUrl: imageUrl(markerIcon),
+  shadowUrl: imageUrl(markerShadow),
 });
 
 const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 60_000 };

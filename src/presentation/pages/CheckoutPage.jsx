@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from '../navigation.js';
 import { api, setClientToken, getClientToken } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
@@ -6,7 +6,6 @@ import { useStore } from '../context/StoreContext.jsx';
 import { CheckoutDeliveryMap, isInsideAnyDeliveryPolygon } from '../components/CheckoutDeliveryMap.jsx';
 
 const PAYMENTS = [
-  { code: 'pix_online', label: 'PIX (online)' },
   { code: 'pix_delivery', label: 'PIX na entrega' },
   { code: 'debit_card', label: 'Cartão de débito na entrega' },
   { code: 'credit_card', label: 'Cartão de crédito na entrega' },
@@ -137,21 +136,35 @@ export function CheckoutPage() {
     }
   }, [storeSlug, deliveryPin]);
 
-  const deliveryPolygons = [
-    ...((deliveryPublic?.deliveryPolygonZones || []).map((z) => z.geojson).filter(Boolean)),
-    ...(deliveryPublic?.deliveryAreaPolygon ? [deliveryPublic.deliveryAreaPolygon] : []),
-  ].filter((p) => p?.type === 'Polygon' && p.coordinates?.[0]?.length >= 3);
+  const deliveryPolygons = useMemo(
+    () =>
+      [
+        ...((deliveryPublic?.deliveryPolygonZones || []).map((z) => z.geojson).filter(Boolean)),
+        ...(deliveryPublic?.deliveryAreaPolygon ? [deliveryPublic.deliveryAreaPolygon] : []),
+      ].filter((p) => p?.type === 'Polygon' && p.coordinates?.[0]?.length >= 3),
+    [deliveryPublic?.deliveryAreaPolygon, deliveryPublic?.deliveryPolygonZones]
+  );
   const hasDeliveryPolygon = deliveryPolygons.length > 0;
+  const deliveryPinIsOutside =
+    hasDeliveryPolygon &&
+    deliveryPin &&
+    Number.isFinite(deliveryPin.lat) &&
+    Number.isFinite(deliveryPin.lng) &&
+    !isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng);
   const taxaUsaRotaNoMapa =
     Boolean(deliveryPublic?.deliveryPricingUsesRoute) && Boolean(hasDeliveryPolygon);
 
   useEffect(() => {
     if (deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng)) {
+      if (hasDeliveryPolygon && !isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng)) {
+        setDeliveryDest(null);
+        return;
+      }
       setDeliveryDest(deliveryPin);
       return;
     }
     if (hasDeliveryPolygon) setDeliveryDest(null);
-  }, [deliveryPin, hasDeliveryPolygon, setDeliveryDest]);
+  }, [deliveryPin, deliveryPolygons, hasDeliveryPolygon, setDeliveryDest]);
 
   useEffect(() => {
     setAppliedCoupon(null);
@@ -502,6 +515,12 @@ export function CheckoutPage() {
                 </a>
               </div>
             )}
+            {deliveryPinIsOutside && (
+              <p className="err" style={{ marginTop: 8, marginBottom: 0 }}>
+                Este ponto está fora da área atendida. Mova o marcador para dentro da área destacada para finalizar o
+                pedido.
+              </p>
+            )}
           </div>
 
           {taxaUsaRotaNoMapa && (
@@ -594,7 +613,7 @@ export function CheckoutPage() {
 
           {submitErr && <p className="err">{submitErr}</p>}
 
-          <button type="submit" className="btn btn-primary" disabled={busy}>
+          <button type="submit" className="btn btn-primary" disabled={busy || deliveryPinIsOutside}>
             {busy ? 'Enviando…' : 'Confirmar pedido'}
           </button>
         </form>
