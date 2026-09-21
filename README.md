@@ -129,6 +129,9 @@ PUBLIC_MENU_URL=http://localhost:3000
 INTERNAL_API_KEY=dev-internal-api-key-change-me
 
 WHATSAPP_PROVIDER=stub
+WHATSAPP_OTP_ENDPOINT=
+WHATSAPP_OTP_ORIGIN=http://localhost:3000
+WHATSAPP_OTP_SITE_KEY=
 PIX_PROVIDER=stub
 LINX_PROVIDER=stub
 PICKINGO_PROVIDER=stub
@@ -199,6 +202,9 @@ npm run seed     # cria dados iniciais
 | `PUBLIC_MENU_URL` | URL publica do cardapio enviada em links. |
 | `INTERNAL_API_KEY` | Chave para rotas internas de pagamentos e WhatsApp. |
 | `OTP_DEBUG_RETURN` | Em dev, retorna o codigo OTP na resposta. |
+| `WHATSAPP_OTP_ENDPOINT` | Endpoint para envio do codigo OTP via WhatsApp. Ex.: `https://chat.premierdistribuidora.com.br/api/whatsapp/codigo-verificacao`. |
+| `WHATSAPP_OTP_ORIGIN` | Valor enviado no header `Origin` para o endpoint de OTP. |
+| `WHATSAPP_OTP_SITE_KEY` | Valor enviado no header `X-Site-Key` para autorizar o endpoint de OTP. |
 | `TRUST_PROXY` | Numero de hops quando a aplicacao estiver atras de proxy/reverse proxy. |
 | `MEDIA_UPLOAD_DIR` | Diretorio para imagens espelhadas. Padrao: `uploads/media`. |
 | `OSRM_BASE_URL` | Base do servico OSRM para rotas. |

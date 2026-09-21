@@ -1,6 +1,7 @@
 import { getWhatsAppProvider } from '../../infrastructure/integrations/whatsapp/index.js';
 import * as logRepo from '../../infrastructure/repositories/whatsappRepository.js';
 import { env } from '../../infrastructure/config/env.js';
+import { AppError } from '../../domain/shared/AppError.js';
 
 const STATUS_LABEL = {
   received: 'Pedido recebido',
@@ -81,6 +82,48 @@ export function buildDeliveryConfirmationMessage(order, confirmationUrl) {
     `Endereço: ${order.delivery_street}, ${order.delivery_number} - ${order.delivery_neighborhood}\n\n` +
     `Quando receber, confirme a entrega neste link:\n${confirmationUrl}`
   );
+}
+
+export function buildVerificationCodeMessage(code) {
+  return `Seu código de verificação é *${code}*.`;
+}
+
+function withBrazilCountryCode(phoneDigits) {
+  const digits = String(phoneDigits || '').replace(/\D/g, '');
+  if (digits.startsWith('55') && digits.length > 11) return digits;
+  return `55${digits}`;
+}
+
+export async function sendVerificationCode(toPhoneDigits, code) {
+  if (!env.whatsappOtpEndpoint || !env.whatsappOtpSiteKey) {
+    // eslint-disable-next-line no-console
+    console.log('[WhatsApp OTP stub] to=%s code=%s', toPhoneDigits, code);
+    return { ok: true, providerRef: `otp-stub-${Date.now()}`, raw: { skipped: true } };
+  }
+
+  const phone = withBrazilCountryCode(toPhoneDigits);
+  const payload = { phone, codigo: String(code) };
+  const res = await fetch(env.whatsappOtpEndpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Origin: env.whatsappOtpOrigin,
+      'X-Site-Key': env.whatsappOtpSiteKey,
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok || data.success === false) {
+    const message = data.error || data.message || `Falha ao enviar código por WhatsApp (${res.status})`;
+    throw new AppError(502, message);
+  }
+
+  return {
+    ok: true,
+    providerRef: data.message_id,
+    raw: data,
+  };
 }
 
 export async function sendMenuLink(toPhoneDigits, metadata = {}) {
