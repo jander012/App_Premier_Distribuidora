@@ -247,8 +247,8 @@ export function AdminLayout({ children }) {
         </div>
         <nav className="admin-nav" style={{ flex: 1 }}>
           {getIsSuperAdmin() && (
-            <NavLink to="/admin/painel/plataforma" title="Plataforma" onClick={closeMobileNav}>
-              {!collapsed || isMobileNav ? 'Plataforma' : 'S'}
+            <NavLink to="/admin/painel/plataforma" title="Funcionários" onClick={closeMobileNav}>
+              {!collapsed || isMobileNav ? 'Funcionários' : 'F'}
             </NavLink>
           )}
           <NavLink to="/admin/painel/pedidos" end title="Pedidos" onClick={closeMobileNav}>
@@ -363,7 +363,7 @@ export function AdminLayout({ children }) {
           >
             Cadastre uma loja em{' '}
             <NavLink to="/admin/painel/plataforma" style={{ fontWeight: 600 }}>
-              Plataforma
+              Funcionários
             </NavLink>{' '}
             para usar pedidos, produtos e as demais telas.
           </div>

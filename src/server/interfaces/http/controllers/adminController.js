@@ -11,15 +11,31 @@ import { formatOrder, formatItem } from './orderController.js';
 export async function login(req, res, next) {
   try {
     const email = req.body?.email;
-    const password = req.body?.password;
+    const code = req.body?.code;
     if (email == null || String(email).trim() === '') {
       return next(new AppError(400, 'Informe o e-mail.'));
     }
-    if (password == null || String(password) === '') {
-      return next(new AppError(400, 'Informe a senha.'));
+    if (code == null || String(code).trim() === '') {
+      return next(new AppError(400, 'Informe o código de acesso.'));
     }
-    const { token, admin, stores } = await adminAuth.login(email, password);
+    const { token, admin, stores } = await adminAuth.login(email, code);
     res.json({ token, admin, stores });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function requestAccessCode(req, res, next) {
+  try {
+    const email = req.body?.email;
+    if (email == null || String(email).trim() === '') {
+      return next(new AppError(400, 'Informe o e-mail.'));
+    }
+    const result = await adminAuth.requestAccessCode(email);
+    res.json({
+      ...result,
+      message: 'Se o e-mail estiver cadastrado, enviaremos um código de acesso.',
+    });
   } catch (e) {
     next(e);
   }

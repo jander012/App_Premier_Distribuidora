@@ -74,10 +74,17 @@ export const openApiSpec = {
       },
       LoginRequest: {
         type: 'object',
-        required: ['email', 'password'],
+        required: ['email', 'code'],
         properties: {
           email: { type: 'string', format: 'email', example: 'admin@premier.local' },
-          password: { type: 'string', example: 'senha-secreta' },
+          code: { type: 'string', example: '123456' },
+        },
+      },
+      AdminCodeRequest: {
+        type: 'object',
+        required: ['email'],
+        properties: {
+          email: { type: 'string', format: 'email', example: 'admin@premier.local' },
         },
       },
       ClientCodeRequest: {
@@ -481,10 +488,21 @@ export const openApiSpec = {
         responses: { 200: { description: 'Mensagem enviada.' }, 403: { $ref: '#/components/responses/Forbidden' } },
       },
     },
+    '/admin/request-code': {
+      post: {
+        tags: ['Admin'],
+        summary: 'Solicita codigo de acesso administrativo por e-mail',
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { $ref: '#/components/schemas/AdminCodeRequest' } } },
+        },
+        responses: { 200: { description: 'Solicitacao recebida.' } },
+      },
+    },
     '/admin/login': {
       post: {
         tags: ['Admin'],
-        summary: 'Login administrativo',
+        summary: 'Valida codigo e autentica admin',
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { $ref: '#/components/schemas/LoginRequest' } } },

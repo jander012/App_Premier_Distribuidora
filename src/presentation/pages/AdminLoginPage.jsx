@@ -10,19 +10,51 @@ import {
 
 export function AdminLoginPage() {
   const nav = useNavigate();
-  const [email, setEmail] = useState('admin@delivery.local');
-  const [password, setPassword] = useState('admin123');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [codeRequested, setCodeRequested] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
+  const [info, setInfo] = useState(null);
   const [pickStores, setPickStores] = useState(null);
 
-  async function submit(e) {
+  async function requestCode(e) {
     e.preventDefault();
     setErr(null);
+    setInfo(null);
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
+    if (!normalizedEmail) {
+      setErr('Informe seu e-mail cadastrado.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await api.post('/admin/request-code', { email: normalizedEmail });
+      setEmail(normalizedEmail);
+      setCodeRequested(true);
+      setInfo(res?.message || 'Se o e-mail estiver cadastrado, enviaremos um código de acesso.');
+      if (res?.code) setInfo(`Código de desenvolvimento: ${res.code}`);
+    } catch (e) {
+      setErr(e.message || 'Erro ao enviar código.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function submitCode(e) {
+    e.preventDefault();
+    setErr(null);
+    setInfo(null);
     try {
       const payload = {
         email: String(email ?? '').trim().toLowerCase(),
-        password: String(password ?? ''),
+        code: String(code ?? '').trim(),
       };
+      if (!payload.code) {
+        setErr('Informe o código enviado ao e-mail.');
+        return;
+      }
+      setBusy(true);
       const res = await api.post('/admin/login', payload);
       if (!res?.token) {
         setErr('Resposta inválida do servidor (sem token).');
@@ -65,6 +97,8 @@ export function AdminLoginPage() {
           ? 'Não foi possível conectar à API. Confira se a aplicação Next está no ar.'
           : e.message || 'Erro ao entrar.';
       setErr(msg);
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -99,24 +133,53 @@ export function AdminLoginPage() {
   return (
     <div style={{ maxWidth: 400, margin: '2rem auto' }}>
       <h1 className="page-title">Admin</h1>
-      <form className="card" onSubmit={submit}>
+      <form className="card" onSubmit={codeRequested ? submitCode : requestCode}>
         <div className="field">
           <label>E-mail</label>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="username" />
-        </div>
-        <div className="field">
-          <label>Senha</label>
           <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
+            type="email"
+            value={email}
+            onChange={(e) => {
+              setEmail(e.target.value);
+              if (codeRequested) {
+                setCodeRequested(false);
+                setCode('');
+                setInfo(null);
+              }
+            }}
+            autoComplete="username"
+            disabled={busy}
           />
         </div>
+        {codeRequested && (
+          <div className="field">
+            <label>Código de acesso</label>
+            <input
+              inputMode="numeric"
+              maxLength={6}
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+              autoComplete="one-time-code"
+              disabled={busy}
+            />
+          </div>
+        )}
         {err && <p className="err">{err}</p>}
-        <button type="submit" className="btn btn-primary">
-          Entrar
+        {info && <p className="muted">{info}</p>}
+        <button type="submit" className="btn btn-primary" disabled={busy}>
+          {codeRequested ? 'Entrar' : 'Enviar código'}
         </button>
+        {codeRequested && (
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ marginTop: 8 }}
+            disabled={busy}
+            onClick={requestCode}
+          >
+            Reenviar código
+          </button>
+        )}
       </form>
     </div>
   );

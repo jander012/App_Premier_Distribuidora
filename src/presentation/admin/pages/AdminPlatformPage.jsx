@@ -20,8 +20,8 @@ export function AdminPlatformPage() {
   const [newStoreSlug, setNewStoreSlug] = useState('');
   const [linkSelf, setLinkSelf] = useState(true);
 
+  const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
   const [newIsSuper, setNewIsSuper] = useState(false);
   const [newStoreIds, setNewStoreIds] = useState(() => new Set());
 
@@ -88,12 +88,12 @@ export function AdminPlatformPage() {
   async function submitAdmin(e) {
     e.preventDefault();
     setErr(null);
-    if (!newEmail.trim()) {
-      setErr('Informe o e-mail do novo usuário.');
+    if (!newName.trim()) {
+      setErr('Informe o nome do funcionário.');
       return;
     }
-    if (newPassword.length < 6) {
-      setErr('Senha deve ter pelo menos 6 caracteres.');
+    if (!newEmail.trim()) {
+      setErr('Informe o e-mail do funcionário.');
       return;
     }
     setBusy(true);
@@ -101,15 +101,15 @@ export function AdminPlatformPage() {
       await api.post(
         '/admin/platform/admins',
         {
+          name: newName.trim(),
           email: newEmail.trim().toLowerCase(),
-          password: newPassword,
           isSuperAdmin: newIsSuper,
           storeIds: [...newStoreIds],
         },
         { headers: adminHeaders() }
       );
+      setNewName('');
       setNewEmail('');
-      setNewPassword('');
       setNewIsSuper(false);
       setNewStoreIds(new Set());
       await load();
@@ -173,9 +173,9 @@ export function AdminPlatformPage() {
 
   return (
     <div style={{ padding: '1rem', maxWidth: 960 }}>
-      <h1 className="page-title">Plataforma</h1>
+      <h1 className="page-title">Funcionários</h1>
       <p className="muted" style={{ marginBottom: '1.5rem' }}>
-        Cadastre lojas e usuários do painel. Somente super administradores veem esta página.
+        Cadastre funcionários do painel e vincule cada acesso às lojas permitidas. Somente super administradores veem esta página.
       </p>
       {err && <p className="err">{err}</p>}
 
@@ -209,8 +209,16 @@ export function AdminPlatformPage() {
       </section>
 
       <section className="card" style={{ marginBottom: '1.25rem' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Novo usuário admin</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Novo funcionário</h2>
         <form onSubmit={submitAdmin} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div className="field">
+            <label>Nome</label>
+            <input
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              autoComplete="off"
+            />
+          </div>
           <div className="field">
             <label>E-mail</label>
             <input
@@ -218,15 +226,6 @@ export function AdminPlatformPage() {
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               autoComplete="off"
-            />
-          </div>
-          <div className="field">
-            <label>Senha</label>
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              autoComplete="new-password"
             />
           </div>
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -251,7 +250,7 @@ export function AdminPlatformPage() {
             </div>
           </div>
           <button type="submit" className="btn btn-primary" disabled={busy}>
-            Criar usuário
+            Criar funcionário
           </button>
         </form>
       </section>
@@ -269,12 +268,13 @@ export function AdminPlatformPage() {
       </section>
 
       <section className="card" style={{ marginTop: '1.25rem' }}>
-        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Usuários e lojas</h2>
+        <h2 style={{ marginTop: 0, fontSize: '1.1rem' }}>Funcionários e lojas</h2>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
             <thead>
               <tr style={{ textAlign: 'left', borderBottom: '1px solid rgba(148,163,184,0.35)' }}>
                 <th style={{ padding: '0.5rem 0' }}>E-mail</th>
+                <th>Nome</th>
                 <th>Super</th>
                 <th>Lojas</th>
                 <th />
@@ -284,6 +284,7 @@ export function AdminPlatformPage() {
               {admins.map((a) => (
                 <tr key={a.id} style={{ borderBottom: '1px solid rgba(148,163,184,0.2)' }}>
                   <td style={{ padding: '0.65rem 0', verticalAlign: 'top' }}>{a.email}</td>
+                  <td style={{ verticalAlign: 'top' }}>{a.name || '—'}</td>
                   <td style={{ verticalAlign: 'top' }}>{a.is_super_admin ? 'Sim' : '—'}</td>
                   <td style={{ verticalAlign: 'top' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>

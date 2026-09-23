@@ -81,6 +81,7 @@ const routes = [
   ['POST', '/whatsapp/send-menu-link', [requireInternalApiKey, whatsappController.sendMenuLink]],
   ['POST', '/whatsapp/send-order-confirmation', [requireInternalApiKey, whatsappController.sendOrderConfirmation]],
   ['POST', '/whatsapp/send-status-update', [requireInternalApiKey, whatsappController.sendStatusUpdate]],
+  ['POST', '/admin/request-code', [adminController.requestAccessCode]],
   ['POST', '/admin/login', [adminController.login]],
   ['GET', '/admin/me', [authenticateAdmin, adminController.getMe]],
   ['GET', '/admin/platform/stores', [...adminPlatform, adminPlatformController.listStores]],

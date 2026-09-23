@@ -55,6 +55,8 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   clientJwtExpiresIn: process.env.CLIENT_JWT_EXPIRES_IN || '8h',
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',
+  adminOtpExpiresMinutes: Number(process.env.ADMIN_OTP_EXPIRES_MINUTES) || 10,
+  adminOtpDebugReturn: process.env.ADMIN_OTP_DEBUG_RETURN === 'true' || (process.env.NODE_ENV || 'development') === 'development',
   publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:3000',
   corsOrigins: parseCorsOrigins(),
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',
@@ -84,6 +86,12 @@ export const env = {
   thermalPrinterInterface: (process.env.THERMAL_PRINTER_INTERFACE || '').trim(),
   /** epson | star | tanca | daruma | brother | custom */
   thermalPrinterType: (process.env.THERMAL_PRINTER_TYPE || 'epson').trim().toLowerCase(),
+  smtpHost: (process.env.SMTP_HOST || '').trim(),
+  smtpPort: Number(process.env.SMTP_PORT) || 587,
+  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpUser: (process.env.SMTP_USER || '').trim(),
+  smtpPassword: process.env.SMTP_PASSWORD || '',
+  mailFrom: (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim(),
   /** Largura em caracteres (ex.: 48 para 80mm, 32 para 58mm). */
   thermalPrinterWidth: (() => {
     const n = Number(process.env.THERMAL_PRINTER_WIDTH);

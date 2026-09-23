@@ -10,7 +10,7 @@ export async function findAdminByEmail(email) {
 export async function findAdminById(id) {
   try {
     const { rows } = await query(
-      `SELECT id, email, password_hash, is_super_admin FROM admin_users WHERE id = $1`,
+      `SELECT id, name, email, password_hash, is_super_admin FROM admin_users WHERE id = $1`,
       [id]
     );
     return rows[0] || null;
@@ -42,13 +42,13 @@ export async function setAdminStores(adminUserId, storeIds) {
   }
 }
 
-export async function createAdminUser({ email, passwordHash, isSuperAdmin }) {
+export async function createAdminUser({ name, email, passwordHash, isSuperAdmin }) {
   const result = await query(
-    `INSERT INTO admin_users (email, password_hash, is_super_admin) VALUES ($1, $2, $3)
+    `INSERT INTO admin_users (name, email, password_hash, is_super_admin) VALUES ($1, $2, $3, $4)
      `,
-    [email, passwordHash, Boolean(isSuperAdmin)]
+    [name || null, email, passwordHash, Boolean(isSuperAdmin)]
   );
-  const { rows } = await query(`SELECT id, email, is_super_admin, created_at FROM admin_users WHERE id = $1`, [
+  const { rows } = await query(`SELECT id, name, email, is_super_admin, created_at FROM admin_users WHERE id = $1`, [
     result.insertId,
   ]);
   return rows[0];
@@ -56,7 +56,7 @@ export async function createAdminUser({ email, passwordHash, isSuperAdmin }) {
 
 export async function listAdminsWithStores() {
   const { rows } = await query(`
-    SELECT au.id, au.email, au.is_super_admin, au.created_at,
+    SELECT au.id, au.name, au.email, au.is_super_admin, au.created_at,
       COALESCE(
         (SELECT CONCAT('[', GROUP_CONCAT(
             JSON_OBJECT('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
@@ -78,7 +78,7 @@ export async function listAdminsWithStoresByIds(ids) {
   const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
   const { rows } = await query(
     `
-    SELECT au.id, au.email, au.is_super_admin, au.created_at,
+    SELECT au.id, au.name, au.email, au.is_super_admin, au.created_at,
       COALESCE(
         (SELECT CONCAT('[', GROUP_CONCAT(
             JSON_OBJECT('id', s.id, 'name', s.name, 'slug', s.slug, 'active', s.active)
@@ -116,4 +116,33 @@ export async function adminHasStoreAccess(adminUserId, storeId) {
     [adminUserId, storeId]
   );
   return rows.length > 0;
+}
+
+export async function createAdminLoginCode({ adminUserId, codeHash, expiresAt }) {
+  await query(
+    `INSERT INTO admin_login_codes (admin_user_id, code_hash, expires_at) VALUES ($1, $2, $3)`,
+    [adminUserId, codeHash, expiresAt]
+  );
+}
+
+export async function findLatestActiveAdminLoginCode(adminUserId) {
+  const { rows } = await query(
+    `SELECT id, admin_user_id, code_hash, expires_at, consumed_at, attempts
+     FROM admin_login_codes
+     WHERE admin_user_id = $1
+       AND consumed_at IS NULL
+       AND expires_at > CURRENT_TIMESTAMP
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`,
+    [adminUserId]
+  );
+  return rows[0] || null;
+}
+
+export async function incrementAdminLoginCodeAttempts(id) {
+  await query(`UPDATE admin_login_codes SET attempts = attempts + 1 WHERE id = $1`, [id]);
+}
+
+export async function consumeAdminLoginCode(id) {
+  await query(`UPDATE admin_login_codes SET consumed_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
 }
