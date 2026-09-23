@@ -58,6 +58,10 @@ function parseAdminLoginMode() {
   return 'auto';
 }
 
+function parseBooleanEnv(value) {
+  return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
+}
+
 export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
@@ -107,7 +111,7 @@ export const env = {
   thermalPrinterType: (process.env.THERMAL_PRINTER_TYPE || 'epson').trim().toLowerCase(),
   smtpHost: (process.env.SMTP_HOST || '').trim(),
   smtpPort: Number(process.env.SMTP_PORT) || 587,
-  smtpSecure: process.env.SMTP_SECURE === 'true',
+  smtpSecure: parseBooleanEnv(process.env.SMTP_SECURE),
   smtpUser: (process.env.SMTP_USER || '').trim(),
   smtpPassword: process.env.SMTP_PASSWORD || '',
   mailFrom: (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim(),
