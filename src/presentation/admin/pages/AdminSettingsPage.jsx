@@ -1,21 +1,55 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 
+function getCurrentMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+}
+
+function formatDateTime(value) {
+  if (!value) return 'Sem alteração registrada';
+  return new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  }).format(new Date(value));
+}
+
+function formatDuration(minutes) {
+  const total = Math.max(0, Math.round(Number(minutes) || 0));
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  if (h === 0) return `${m} min`;
+  if (m === 0) return `${h} h`;
+  return `${h} h ${m} min`;
+}
+
+function statusLabel(status) {
+  return status === 'closed' ? 'Fechada' : 'Aberta';
+}
+
 export function AdminSettingsPage() {
   const [settings, setSettings] = useState(null);
+  const [storeStatus, setStoreStatus] = useState(null);
+  const [month, setMonth] = useState(getCurrentMonth);
+  const [reason, setReason] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
   const [err, setErr] = useState(null);
 
   const load = useCallback(async () => {
     setErr(null);
     try {
-      const s = await api.get('/admin/settings', { headers: adminHeaders() });
+      const [s, status] = await Promise.all([
+        api.get('/admin/settings', { headers: adminHeaders() }),
+        api.get(`/admin/store-status?month=${encodeURIComponent(month)}`, { headers: adminHeaders() }),
+      ]);
       setSettings(s);
+      setStoreStatus(status);
     } catch (e) {
       setErr(e.message);
     }
-  }, []);
+  }, [month]);
 
   useEffect(() => {
     load();
@@ -44,9 +78,45 @@ export function AdminSettingsPage() {
     }
   }
 
+  async function changeStoreStatus(nextStatus) {
+    setSavingStatus(true);
+    setErr(null);
+    try {
+      const data = await api.patch(
+        '/admin/store-status',
+        {
+          status: nextStatus,
+          reason,
+          month,
+        },
+        { headers: adminHeaders() }
+      );
+      setStoreStatus(data);
+      setReason('');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSavingStatus(false);
+    }
+  }
+
+  const chartDays = storeStatus?.summary?.days || [];
+  const maxOpenMinutes = useMemo(
+    () => Math.max(1, ...chartDays.map((day) => Number(day.openMinutes) || 0)),
+    [chartDays]
+  );
+  const maxCloseCount = useMemo(
+    () => Math.max(1, ...chartDays.map((day) => Number(day.closeCount) || 0)),
+    [chartDays]
+  );
+
   if (!settings) {
     return <p className="muted">Carregando…</p>;
   }
+
+  const current = storeStatus?.current;
+  const summary = storeStatus?.summary;
+  const isOpen = current?.isOpen !== false;
 
   return (
     <div>
@@ -57,7 +127,120 @@ export function AdminSettingsPage() {
         </Link>
       </div>
       {err && <p className="err">{err}</p>}
+      <section className="card store-status-panel">
+        <div className="store-status-panel__head">
+          <div>
+            <span className="section-label">Operação</span>
+            <h2 className="store-status-panel__title">Loja {statusLabel(current?.status)}</h2>
+            <p className="muted">
+              Última alteração: {formatDateTime(current?.latestEvent?.createdAt)}
+              {current?.latestEvent?.reason ? ` - ${current.latestEvent.reason}` : ''}
+            </p>
+          </div>
+          <span className={`store-status-badge ${isOpen ? 'store-status-badge--open' : 'store-status-badge--closed'}`}>
+            {isOpen ? 'Aberta' : 'Fechada'}
+          </span>
+        </div>
+        <div className="field">
+          <label>Motivo da alteração (opcional)</label>
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder="Ex.: falta de energia, manutenção, pausa operacional"
+          />
+        </div>
+        <div className="store-status-actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            disabled={savingStatus || isOpen}
+            onClick={() => changeStoreStatus('open')}
+          >
+            Abrir loja
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            disabled={savingStatus || !isOpen}
+            onClick={() => changeStoreStatus('closed')}
+          >
+            Fechar loja
+          </button>
+        </div>
+      </section>
+
+      <section className="card store-status-panel">
+        <div className="store-status-panel__head">
+          <div>
+            <span className="section-label">Resumo mensal</span>
+            <h2 className="store-status-panel__title">
+              {formatDuration(summary?.totalOpenMinutes)} aberta
+            </h2>
+            <p className="muted">
+              {summary?.totalCloseCount || 0} fechamento(s) registrado(s) no mês.
+            </p>
+          </div>
+          <div className="field store-status-month">
+            <label htmlFor="store-status-month">Mês</label>
+            <input
+              id="store-status-month"
+              type="month"
+              value={month}
+              onChange={(e) => setMonth(e.target.value || getCurrentMonth())}
+            />
+          </div>
+        </div>
+        {chartDays.length === 0 ? (
+          <p className="muted">Nenhum dado para este mês.</p>
+        ) : (
+          <div className="store-status-chart" aria-label="Tempo aberto e fechamentos por dia">
+            {chartDays.map((day) => {
+              const date = new Date(`${day.date}T00:00:00`);
+              const openPct = Math.max(2, (Number(day.openMinutes) / maxOpenMinutes) * 100);
+              const closePct = Math.max(0, (Number(day.closeCount) / maxCloseCount) * 100);
+              return (
+                <div key={day.date} className="store-status-chart__row">
+                  <span className="store-status-chart__day">
+                    {String(date.getDate()).padStart(2, '0')}
+                  </span>
+                  <div className="store-status-chart__bars">
+                    <span
+                      className="store-status-chart__bar store-status-chart__bar--open"
+                      style={{ width: `${openPct}%` }}
+                      title={`${formatDuration(day.openMinutes)} aberta`}
+                    />
+                    {day.closeCount > 0 && (
+                      <span
+                        className="store-status-chart__bar store-status-chart__bar--closed"
+                        style={{ width: `${closePct}%` }}
+                        title={`${day.closeCount} fechamento(s)`}
+                      />
+                    )}
+                  </div>
+                  <span className="store-status-chart__meta">
+                    {formatDuration(day.openMinutes)} | {day.closeCount}x
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {summary?.events?.length > 0 && (
+          <div className="store-status-events">
+            <span className="section-label">Últimos eventos do mês</span>
+            {summary.events.map((event) => (
+              <div key={event.id} className="store-status-event">
+                <strong>{statusLabel(event.status)}</strong>
+                <span>{formatDateTime(event.createdAt)}</span>
+                {event.reason && <span className="muted">{event.reason}</span>}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       <form className="card" onSubmit={saveSettings}>
+        <div className="section-label">Configurações</div>
         <div className="field">
           <label>Taxa de entrega (R$)</label>
           <input name="delivery_fee" type="number" step="0.01" defaultValue={settings.delivery_fee} />

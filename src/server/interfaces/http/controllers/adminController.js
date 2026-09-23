@@ -4,6 +4,7 @@ import * as orderRepo from '../../../infrastructure/repositories/orderRepository
 import * as customerRepo from '../../../infrastructure/repositories/customerRepository.js';
 import * as menuRepo from '../../../infrastructure/repositories/menuRepository.js';
 import * as settingsRepo from '../../../infrastructure/repositories/settingsRepository.js';
+import * as storeStatusRepo from '../../../infrastructure/repositories/storeStatusRepository.js';
 import * as orderService from '../../../application/services/orderService.js';
 import * as thermalReceiptService from '../../../application/services/thermalReceiptService.js';
 import { formatOrder, formatItem } from './orderController.js';
@@ -231,6 +232,35 @@ export async function putSettings(req, res, next) {
   }
 }
 
+export async function getStoreStatus(req, res, next) {
+  try {
+    const [current, summary] = await Promise.all([
+      storeStatusRepo.getCurrentStatus(req.storeId),
+      storeStatusRepo.getMonthlySummary(req.storeId, req.query.month),
+    ]);
+    res.json({ current, summary });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function patchStoreStatus(req, res, next) {
+  try {
+    const status = storeStatusRepo.normalizeStoreStatus(req.body?.status);
+    if (!status) return next(new AppError(400, 'Status inválido'));
+    const rawAdmin = req.admin?.sub ?? req.admin?.id;
+    const adminId = rawAdmin != null ? Number(rawAdmin) : null;
+    const current = await storeStatusRepo.createStatusEvent(req.storeId, status, {
+      reason: req.body?.reason ? String(req.body.reason).trim() : null,
+      adminId: Number.isFinite(adminId) ? adminId : null,
+    });
+    const summary = await storeStatusRepo.getMonthlySummary(req.storeId, req.body?.month);
+    res.json({ current, summary });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function listCategoriesAdmin(req, res, next) {
   try {
     res.json(await menuRepo.adminListCategories(req.storeId));
@@ -246,6 +276,8 @@ export async function createCategory(req, res, next) {
       sortOrder: req.body.sortOrder != null ? Number(req.body.sortOrder) : 0,
       active: req.body.active,
       isAgeRestricted: Boolean(req.body.isAgeRestricted ?? req.body.is_age_restricted),
+      imageUrl: req.body.imageUrl ?? req.body.image_url,
+      backgroundColor: req.body.backgroundColor ?? req.body.background_color,
       storeId: req.storeId,
     });
     res.status(201).json(row);
@@ -266,6 +298,12 @@ export async function updateCategory(req, res, next) {
     }
     if (req.body.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder);
     if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+    if (req.body.imageUrl !== undefined || req.body.image_url !== undefined) {
+      patch.imageUrl = req.body.imageUrl ?? req.body.image_url;
+    }
+    if (req.body.backgroundColor !== undefined || req.body.background_color !== undefined) {
+      patch.backgroundColor = req.body.backgroundColor ?? req.body.background_color;
+    }
     if (req.body.isAgeRestricted !== undefined || req.body.is_age_restricted !== undefined) {
       patch.isAgeRestricted = Boolean(req.body.isAgeRestricted ?? req.body.is_age_restricted);
     }

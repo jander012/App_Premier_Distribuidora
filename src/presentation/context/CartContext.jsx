@@ -242,6 +242,9 @@ export function CartProvider({ children }) {
 
   const addItem = useCallback(
     async ({ productId, quantity, note, optionIds }) => {
+      if (deliveryPublic?.storeOpen === false) {
+        throw new Error('A loja está fechada no momento.');
+      }
       let token = await ensureCartToken();
       const body = {
         productId,
@@ -264,7 +267,7 @@ export function CartProvider({ children }) {
       }
       await refreshSummary();
     },
-    [ensureCartToken, refreshSummary, storeSlug]
+    [deliveryPublic?.storeOpen, ensureCartToken, refreshSummary, storeSlug]
   );
 
   const updateItem = useCallback(
@@ -285,6 +288,9 @@ export function CartProvider({ children }) {
 
   const setProductQuantity = useCallback(
     async (productId, quantity) => {
+      if (deliveryPublic?.storeOpen === false && Number(quantity) > 0) {
+        throw new Error('A loja está fechada no momento.');
+      }
       const q = Math.max(0, Math.floor(Number(quantity) || 0));
       await ensureCartToken();
       const token = getCartToken();
@@ -310,7 +316,7 @@ export function CartProvider({ children }) {
         await addItem({ productId, quantity: q, optionIds: [] });
       }
     },
-    [ensureCartToken, addItem, updateItem, removeItem, refreshSummary]
+    [deliveryPublic?.storeOpen, ensureCartToken, addItem, updateItem, removeItem, refreshSummary]
   );
 
   const clearLocalCart = useCallback(() => {

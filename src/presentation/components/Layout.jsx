@@ -3,12 +3,13 @@ import { useCart } from '../context/CartContext.jsx';
 import { useStore } from '../context/StoreContext.jsx';
 
 export function Layout({ children }) {
-  const { summary } = useCart();
+  const { deliveryPublic, summary } = useCart();
   const { storeSlug, setStoreSlug, storesCatalog, linkedStores } = useStore();
   const loc = useLocation();
   const hideNav = loc.pathname.startsWith('/admin');
   const isAdmin = hideNav;
   const count = summary?.items?.reduce((a, i) => a + i.quantity, 0) || 0;
+  const storeOpen = deliveryPublic?.storeOpen !== false;
 
   const storeOptions =
     linkedStores && linkedStores.length > 1
@@ -31,9 +32,9 @@ export function Layout({ children }) {
               <span className="brand-mark">P</span>
               <span>{brandName}</span>
             </Link>
-            <div className="delivery-chip">
+            <div className={`delivery-chip ${storeOpen ? '' : 'delivery-chip--closed'}`}>
               <span>Entrega</span>
-              <strong>Agora</strong>
+              <strong>{storeOpen ? 'Agora' : 'Fechada'}</strong>
             </div>
             {storeOptions.length > 0 && (
               <div className="topbar-store">
@@ -57,27 +58,29 @@ export function Layout({ children }) {
             <Link to="/meus-pedidos" className="orders-link">
               Meus pedidos
             </Link>
-            <Link to="/carrinho" className="cart-link">
-              <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                  d="M6.2 8h11.6l-.8 11H7L6.2 8Z"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-                <path
-                  d="M9 8a3 3 0 0 1 6 0"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="2"
-                />
-              </svg>
-              <span>Carrinho</span>
-              {count > 0 && <span className="badge">{count}</span>}
-            </Link>
+            {storeOpen && (
+              <Link to="/carrinho" className="cart-link">
+                <svg className="cart-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path
+                    d="M6.2 8h11.6l-.8 11H7L6.2 8Z"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="M9 8a3 3 0 0 1 6 0"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                  />
+                </svg>
+                <span>Carrinho</span>
+                {count > 0 && <span className="badge">{count}</span>}
+              </Link>
+            )}
           </nav>
         </header>
       )}

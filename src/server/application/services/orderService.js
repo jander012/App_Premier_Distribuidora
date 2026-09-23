@@ -5,6 +5,7 @@ import * as cartRepo from '../../infrastructure/repositories/cartRepository.js';
 import * as orderRepo from '../../infrastructure/repositories/orderRepository.js';
 import * as driverRepo from '../../infrastructure/repositories/driverRepository.js';
 import * as customerRepo from '../../infrastructure/repositories/customerRepository.js';
+import * as storeStatusRepo from '../../infrastructure/repositories/storeStatusRepository.js';
 import * as whatsappService from './whatsappService.js';
 import * as paymentService from './paymentService.js';
 import * as deliveryPricingService from './deliveryPricingService.js';
@@ -68,6 +69,10 @@ export async function createOrder(body, opts = {}) {
   const bad = summary.items.find((i) => !i.available);
   if (bad) throw new AppError(400, `Produto indisponível: ${bad.name}`);
   if (!summary.storeId) throw new AppError(400, 'Loja do carrinho indefinida');
+  const storeStatus = await storeStatusRepo.getCurrentStatus(summary.storeId);
+  if (!storeStatus.isOpen) {
+    throw new AppError(409, 'A loja está fechada no momento. Tente novamente quando reabrir.');
+  }
 
   const { customer, address } = await customerService.ensureCustomerForOrder(phone, body);
 

@@ -105,6 +105,8 @@ const routes = [
   ['PATCH', '/admin/orders/:id/status', [...adminProtected, adminController.patchOrderStatus]],
   ['GET', '/admin/settings', [...adminProtected, adminController.getSettings]],
   ['PUT', '/admin/settings', [...adminProtected, adminController.putSettings]],
+  ['GET', '/admin/store-status', [...adminProtected, adminController.getStoreStatus]],
+  ['PATCH', '/admin/store-status', [...adminProtected, adminController.patchStoreStatus]],
   ['GET', '/admin/categories', [...adminProtected, adminController.listCategoriesAdmin]],
   ['POST', '/admin/categories', [...adminProtected, adminController.createCategory]],
   ['PUT', '/admin/categories/:id', [...adminProtected, adminController.updateCategory]],

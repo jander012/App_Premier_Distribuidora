@@ -18,7 +18,7 @@ function localMediaFileIdFromUrl(url) {
 
 export async function listCategories(storeId, { includeAgeRestricted = false } = {}) {
   const { rows } = await query(
-    `SELECT id, name, sort_order, active, is_age_restricted FROM categories
+    `SELECT id, name, image_url, background_color, sort_order, active, is_age_restricted FROM categories
      WHERE active = true AND store_id = $1
        ${includeAgeRestricted ? '' : 'AND is_age_restricted = false'}
      ORDER BY sort_order, id`,
@@ -227,12 +227,29 @@ export async function adminListCategories(storeId) {
   return rows;
 }
 
-export async function adminCreateCategory({ name, sortOrder = 0, active = true, isAgeRestricted = false, storeId }) {
+export async function adminCreateCategory({
+  name,
+  sortOrder = 0,
+  active = true,
+  isAgeRestricted = false,
+  imageUrl = null,
+  backgroundColor = null,
+  storeId,
+}) {
   const n = String(name || '').trim();
   if (!n) throw new AppError(400, 'Nome da categoria obrigatório');
   const result = await query(
-    `INSERT INTO categories (name, sort_order, active, is_age_restricted, store_id) VALUES ($1, $2, $3, $4, $5)`,
-    [n, Number(sortOrder) || 0, active !== false, isAgeRestricted === true, storeId]
+    `INSERT INTO categories (name, image_url, background_color, sort_order, active, is_age_restricted, store_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [
+      n,
+      String(imageUrl || '').trim() || null,
+      String(backgroundColor || '').trim() || null,
+      Number(sortOrder) || 0,
+      active !== false,
+      isAgeRestricted === true,
+      storeId,
+    ]
   );
   const { rows } = await query(`SELECT * FROM categories WHERE id = $1`, [result.insertId]);
   return rows[0];
@@ -243,14 +260,26 @@ export async function adminUpdateCategory(id, storeId, data) {
   if (!cur.rows[0]) return null;
   const row = cur.rows[0];
   const name = data.name !== undefined ? data.name : row.name;
+  const imageUrl = data.imageUrl !== undefined ? String(data.imageUrl || '').trim() || null : row.image_url;
+  const backgroundColor =
+    data.backgroundColor !== undefined
+      ? String(data.backgroundColor || '').trim() || null
+      : row.background_color;
   const sortOrder = data.sortOrder !== undefined ? data.sortOrder : row.sort_order;
   const active = data.active !== undefined ? data.active : row.active;
   const isAgeRestricted =
     data.isAgeRestricted !== undefined ? data.isAgeRestricted : row.is_age_restricted;
   await query(
-    `UPDATE categories SET name = $3, sort_order = $4, active = $5, is_age_restricted = $6, updated_at = now()
+    `UPDATE categories SET
+       name = $3,
+       image_url = $4,
+       background_color = $5,
+       sort_order = $6,
+       active = $7,
+       is_age_restricted = $8,
+       updated_at = now()
      WHERE id = $1 AND store_id = $2`,
-    [id, storeId, name, sortOrder, active, isAgeRestricted]
+    [id, storeId, name, imageUrl, backgroundColor, sortOrder, active, isAgeRestricted]
   );
   const { rows } = await query(`SELECT * FROM categories WHERE id = $1 AND store_id = $2`, [id, storeId]);
   return rows[0];

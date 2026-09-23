@@ -13,7 +13,7 @@ function withAgeQuery(path, isAdult) {
 export function ProductPage() {
   const { id } = useParams();
   const nav = useNavigate();
-  const { addItem } = useCart();
+  const { addItem, deliveryPublic } = useCart();
   const { storeSlug } = useStore();
   const [ageDecision, setAgeDecision] = useState(() => readAgeGateDecision(storeSlug));
   const [product, setProduct] = useState(null);
@@ -124,6 +124,7 @@ export function ProductPage() {
     0
   );
   const unit = Number(product.price) + extras;
+  const storeOpen = deliveryPublic?.storeOpen !== false;
 
   return (
     <div>
@@ -183,21 +184,24 @@ export function ProductPage() {
       <div className="row-between" style={{ marginBottom: '1rem' }}>
         <span className="muted">Quantidade</span>
         <div className="qty">
-          <button type="button" onClick={() => setQty((q) => Math.max(1, q - 1))}>
+          <button type="button" disabled={!storeOpen} onClick={() => setQty((q) => Math.max(1, q - 1))}>
             −
           </button>
           <span>{qty}</span>
-          <button type="button" onClick={() => setQty((q) => q + 1)}>
+          <button type="button" disabled={!storeOpen} onClick={() => setQty((q) => q + 1)}>
             +
           </button>
         </div>
       </div>
 
+      {!storeOpen && <p className="err">A loja está fechada no momento. Volte quando reabrir para adicionar itens.</p>}
       {err && <p className="err">{err}</p>}
 
-      <button type="button" className="btn btn-primary" disabled={!product.available || busy} onClick={handleAdd}>
-        Adicionar — R$ {(unit * qty).toFixed(2)}
-      </button>
+      {storeOpen && (
+        <button type="button" className="btn btn-primary" disabled={!product.available || busy} onClick={handleAdd}>
+          Adicionar — R$ {(unit * qty).toFixed(2)}
+        </button>
+      )}
     </div>
   );
 }

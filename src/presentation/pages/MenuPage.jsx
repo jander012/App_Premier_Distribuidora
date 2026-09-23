@@ -29,7 +29,7 @@ function buildProductsPath(storeSlug, filterCategoryId, page, q, isAdult) {
 
 export function MenuPage() {
   const [params] = useSearchParams();
-  const { setPhone } = useCart();
+  const { deliveryPublic, setPhone } = useCart();
   const { storeSlug } = useStore();
   const [ageDecision, setAgeDecision] = useState(() => readAgeGateDecision(storeSlug));
   const [categories, setCategories] = useState([]);
@@ -236,6 +236,7 @@ export function MenuPage() {
       : '0 itens';
 
   const loading = loadingCategories;
+  const storeOpen = deliveryPublic?.storeOpen !== false;
 
   if (ageDecision === null) {
     return (
@@ -256,9 +257,9 @@ export function MenuPage() {
           <h1 className="page-title">Cardápio</h1>
           <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
         </div>
-        <div className="menu-hero__meta">
-          <strong>Aberto</strong>
-          <span>Entrega rápida</span>
+        <div className={`menu-hero__meta ${storeOpen ? '' : 'menu-hero__meta--closed'}`}>
+          <strong>{storeOpen ? 'Aberto' : 'Fechado'}</strong>
+          <span>{storeOpen ? 'Entrega rápida' : 'Pedidos pausados'}</span>
         </div>
       </section>
       <div className="menu-search">

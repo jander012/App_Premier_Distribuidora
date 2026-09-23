@@ -8,6 +8,8 @@ export function AdminCategoriesPage() {
   const [err, setErr] = useState(null);
   const [editingId, setEditingId] = useState(null);
   const [name, setName] = useState('');
+  const [imageUrl, setImageUrl] = useState('');
+  const [backgroundColor, setBackgroundColor] = useState('#f8d7dd');
   const [sortOrder, setSortOrder] = useState('0');
   const [active, setActive] = useState(true);
   const [isAgeRestricted, setIsAgeRestricted] = useState(false);
@@ -30,6 +32,8 @@ export function AdminCategoriesPage() {
   function startEdit(c) {
     setEditingId(c.id);
     setName(c.name || '');
+    setImageUrl(c.image_url || '');
+    setBackgroundColor(c.background_color || '#f8d7dd');
     setSortOrder(String(c.sort_order ?? 0));
     setActive(c.active !== false);
     setIsAgeRestricted(Boolean(c.is_age_restricted));
@@ -38,6 +42,8 @@ export function AdminCategoriesPage() {
   function clearForm() {
     setEditingId(null);
     setName('');
+    setImageUrl('');
+    setBackgroundColor('#f8d7dd');
     setSortOrder('0');
     setActive(true);
     setIsAgeRestricted(false);
@@ -56,13 +62,27 @@ export function AdminCategoriesPage() {
       if (editingId != null) {
         await api.put(
           `/admin/categories/${editingId}`,
-          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active, isAgeRestricted },
+          {
+            name: name.trim(),
+            imageUrl: imageUrl.trim() || null,
+            backgroundColor: backgroundColor.trim() || null,
+            sortOrder: Number.isFinite(so) ? so : 0,
+            active,
+            isAgeRestricted,
+          },
           { headers: adminHeaders() }
         );
       } else {
         await api.post(
           '/admin/categories',
-          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active, isAgeRestricted },
+          {
+            name: name.trim(),
+            imageUrl: imageUrl.trim() || null,
+            backgroundColor: backgroundColor.trim() || null,
+            sortOrder: Number.isFinite(so) ? so : 0,
+            active,
+            isAgeRestricted,
+          },
           { headers: adminHeaders() }
         );
       }
@@ -116,6 +136,30 @@ export function AdminCategoriesPage() {
           <input value={name} onChange={(e) => setName(e.target.value)} required placeholder="Ex.: Pizzas" />
         </div>
         <div className="field">
+          <label>Imagem da categoria</label>
+          <input
+            value={imageUrl}
+            onChange={(e) => setImageUrl(e.target.value)}
+            placeholder="https://.../pizza.png ou /api/media/files/..."
+          />
+        </div>
+        <div className="field">
+          <label>Cor de fundo</label>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input
+              type="color"
+              value={/^#[0-9a-f]{6}$/i.test(backgroundColor) ? backgroundColor : '#f8d7dd'}
+              onChange={(e) => setBackgroundColor(e.target.value)}
+              style={{ width: 56, padding: 4 }}
+            />
+            <input
+              value={backgroundColor}
+              onChange={(e) => setBackgroundColor(e.target.value)}
+              placeholder="#f8d7dd"
+            />
+          </div>
+        </div>
+        <div className="field">
           <label>Ordem no cardápio</label>
           <input
             type="number"
@@ -150,6 +194,7 @@ export function AdminCategoriesPage() {
           <thead>
             <tr>
               <th>ID</th>
+              <th>Visual</th>
               <th>Nome</th>
               <th>Ordem</th>
               <th>Ativa</th>
@@ -162,6 +207,14 @@ export function AdminCategoriesPage() {
             {rows.map((c) => (
               <tr key={c.id}>
                 <td>{c.id}</td>
+                <td>
+                  <span
+                    className="admin-category-preview"
+                    style={{ backgroundColor: c.background_color || '#f8d7dd' }}
+                  >
+                    {c.image_url ? <img src={c.image_url} alt="" /> : <span>{String(c.name || '?').slice(0, 1)}</span>}
+                  </span>
+                </td>
                 <td>{c.name}</td>
                 <td>{c.sort_order}</td>
                 <td>{c.active ? 'Sim' : 'Não'}</td>

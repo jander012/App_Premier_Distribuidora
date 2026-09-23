@@ -1,6 +1,7 @@
 import * as settingsRepo from '../../../infrastructure/repositories/settingsRepository.js';
 import * as storeRepo from '../../../infrastructure/repositories/storeRepository.js';
 import * as deliveryRepo from '../../../infrastructure/repositories/deliveryRepository.js';
+import * as storeStatusRepo from '../../../infrastructure/repositories/storeStatusRepository.js';
 import { AppError } from '../../../domain/shared/AppError.js';
 import { parseDeliveryPolygon } from '../../../domain/shared/geoUtils.js';
 
@@ -11,6 +12,7 @@ export async function getPublicSettings(req, res, next) {
     if (!store) throw new AppError(404, 'Loja não encontrada');
     const s = await settingsRepo.getStoreConfig(store.id);
     const rawPoly = await deliveryRepo.getDeliveryPolygonForStore(store.id);
+    const status = await storeStatusRepo.getCurrentStatus(store.id);
     const poly = parseDeliveryPolygon(rawPoly);
     const zones = await deliveryRepo.listZones(store.id);
     const polygonZones = await deliveryRepo.listPolygonZones(store.id);
@@ -46,6 +48,8 @@ export async function getPublicSettings(req, res, next) {
       menuBaseUrl: s?.menu_base_url || null,
       storeSlug: store.slug,
       storeName: store.name,
+      storeOpen: status.isOpen,
+      storeStatus: status.status,
     });
   } catch (e) {
     next(e);

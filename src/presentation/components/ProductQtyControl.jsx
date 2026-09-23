@@ -11,14 +11,15 @@ function findSimpleCartLine(summary, productId) {
 }
 
 export function ProductQtyControl({ productId, available = true, compact = false }) {
-  const { summary, setProductQuantity } = useCart();
+  const { deliveryPublic, summary, setProductQuantity } = useCart();
   const [busy, setBusy] = useState(false);
 
   const line = useMemo(() => findSimpleCartLine(summary, productId), [summary, productId]);
   const qty = line?.quantity ?? 0;
+  const storeOpen = deliveryPublic?.storeOpen !== false;
 
   async function applyQuantity(nextQty) {
-    if (!available || busy) return;
+    if (!available || !storeOpen || busy) return;
     setBusy(true);
     try {
       await setProductQuantity(productId, nextQty);
@@ -27,10 +28,10 @@ export function ProductQtyControl({ productId, available = true, compact = false
     }
   }
 
-  if (!available) {
+  if (!available || !storeOpen) {
     return (
       <div className={`product-qty product-qty--disabled${compact ? ' product-qty--compact' : ''}`}>
-        <span className="muted">Indisponível</span>
+        <span className="muted">{available ? 'Loja fechada' : 'Indisponível'}</span>
       </div>
     );
   }
