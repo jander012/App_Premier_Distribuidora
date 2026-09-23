@@ -47,6 +47,22 @@ function generateNumericCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
+function formatSmtpFailure(error) {
+  const responseCode = Number(error?.responseCode);
+  const code = String(error?.code || '').toUpperCase();
+  const command = String(error?.command || '').toUpperCase();
+
+  if (responseCode === 535 || code === 'EAUTH' || command === 'AUTH') {
+    return 'Falha de autenticação no SMTP. Confira SMTP_USER e SMTP_PASSWORD; em painel de hospedagem use a senha sem aspas, e em arquivo .env coloque aspas se a senha começar com #.';
+  }
+
+  if (code === 'ETIMEDOUT' || /greeting/i.test(String(error?.message || ''))) {
+    return 'Falha de conexão com o SMTP. Confira SMTP_HOST, SMTP_PORT e SMTP_SECURE.';
+  }
+
+  return 'Não foi possível enviar o código por e-mail. Verifique as configurações SMTP ou use ADMIN_LOGIN_MODE=password para manter o login por senha.';
+}
+
 export function getAuthMode() {
   return env.adminEmailLoginEnabled ? 'email_code' : 'password';
 }
@@ -71,11 +87,13 @@ export async function requestAccessCode(email) {
   try {
     await sendAdminAccessCode({ to: user.email, name: user.name, code });
   } catch (e) {
-    console.error('Falha ao enviar código de acesso admin por SMTP:', e);
-    throw new AppError(
-      503,
-      'Não foi possível enviar o código por e-mail. Verifique as configurações SMTP ou use ADMIN_LOGIN_MODE=password para manter o login por senha.'
-    );
+    console.error('Falha ao enviar código de acesso admin por SMTP:', {
+      code: e?.code,
+      command: e?.command,
+      responseCode: e?.responseCode,
+      message: e?.message,
+    });
+    throw new AppError(503, formatSmtpFailure(e));
   }
 
   return env.adminOtpDebugReturn ? { ok: true, code } : { ok: true };
