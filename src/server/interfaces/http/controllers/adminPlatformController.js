@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import crypto from 'crypto';
 import * as storeRepo from '../../../infrastructure/repositories/storeRepository.js';
 import * as adminUserRepo from '../../../infrastructure/repositories/adminUserRepository.js';
+import { env } from '../../../infrastructure/config/env.js';
 import { AppError } from '../../../domain/shared/AppError.js';
 
 export async function listStores(req, res, next) {
@@ -42,13 +43,20 @@ export async function createAdmin(req, res, next) {
   try {
     const name = String(req.body?.name || '').trim();
     const email = String(req.body?.email || '').trim().toLowerCase();
+    const password = String(req.body?.password || '');
     const storeIds = Array.isArray(req.body?.storeIds) ? req.body.storeIds.map(Number).filter(Number.isFinite) : [];
     const isSuperAdmin = Boolean(req.body?.isSuperAdmin);
     if (!name) throw new AppError(400, 'Nome é obrigatório');
     if (!email) throw new AppError(400, 'E-mail é obrigatório');
+    if (!env.adminEmailLoginEnabled && password.length < 6) {
+      throw new AppError(400, 'Senha deve ter pelo menos 6 caracteres');
+    }
     const existing = await adminUserRepo.findAdminByEmail(email);
     if (existing) throw new AppError(409, 'E-mail já cadastrado');
-    const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 10);
+    const passwordHash = await bcrypt.hash(
+      env.adminEmailLoginEnabled ? crypto.randomBytes(32).toString('hex') : password,
+      10
+    );
     const admin = await adminUserRepo.createAdminUser({ name, email, passwordHash, isSuperAdmin });
     await adminUserRepo.setAdminStores(admin.id, storeIds);
     const [full] = await adminUserRepo.listAdminsWithStoresByIds([admin.id]);

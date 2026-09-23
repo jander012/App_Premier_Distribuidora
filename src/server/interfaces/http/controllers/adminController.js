@@ -11,15 +11,24 @@ import { formatOrder, formatItem } from './orderController.js';
 export async function login(req, res, next) {
   try {
     const email = req.body?.email;
-    const code = req.body?.code;
+    const authMode = adminAuth.getAuthMode();
+    const secret = authMode === 'email_code' ? req.body?.code : req.body?.password;
     if (email == null || String(email).trim() === '') {
       return next(new AppError(400, 'Informe o e-mail.'));
     }
-    if (code == null || String(code).trim() === '') {
-      return next(new AppError(400, 'Informe o código de acesso.'));
+    if (secret == null || String(secret).trim() === '') {
+      return next(new AppError(400, authMode === 'email_code' ? 'Informe o código de acesso.' : 'Informe a senha.'));
     }
-    const { token, admin, stores } = await adminAuth.login(email, code);
+    const { token, admin, stores } = await adminAuth.login(email, secret);
     res.json({ token, admin, stores });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function getAuthMode(_req, res, next) {
+  try {
+    res.json({ mode: adminAuth.getAuthMode() });
   } catch (e) {
     next(e);
   }

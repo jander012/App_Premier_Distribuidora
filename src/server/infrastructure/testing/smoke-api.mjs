@@ -31,33 +31,45 @@ async function main() {
     process.exit(1);
   }
 
-  const requestCode = await fetch(`${base}/admin/request-code`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@delivery.local' }),
-  });
-  const requestCodeText = await requestCode.text();
-  console.log(`POST ${base}/admin/request-code ->`, requestCode.status, requestCodeText.slice(0, 180));
-  if (!requestCode.ok) {
-    console.error('\nSolicitação de código falhou. Confira migrations, seed e configuração de e-mail.');
-    process.exit(1);
-  }
-
-  let code;
+  const authModeRes = await fetch(`${base}/admin/auth-mode`);
+  const authModeText = await authModeRes.text();
+  console.log(`GET  ${base}/admin/auth-mode ->`, authModeRes.status, authModeText.slice(0, 120));
+  let authMode = 'password';
   try {
-    code = JSON.parse(requestCodeText).code;
-  } catch {
-    code = null;
-  }
-  if (!code) {
-    console.error('\nSmoke precisa de ADMIN_OTP_DEBUG_RETURN=true ou NODE_ENV=development para ler o código.');
-    process.exit(1);
+    authMode = JSON.parse(authModeText).mode || 'password';
+  } catch {}
+
+  let loginBody = { email: 'admin@delivery.local', password: 'admin123' };
+  if (authMode === 'email_code') {
+    const requestCode = await fetch(`${base}/admin/request-code`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'admin@delivery.local' }),
+    });
+    const requestCodeText = await requestCode.text();
+    console.log(`POST ${base}/admin/request-code ->`, requestCode.status, requestCodeText.slice(0, 180));
+    if (!requestCode.ok) {
+      console.error('\nSolicitação de código falhou. Confira migrations, seed e configuração de e-mail.');
+      process.exit(1);
+    }
+
+    let code;
+    try {
+      code = JSON.parse(requestCodeText).code;
+    } catch {
+      code = null;
+    }
+    if (!code) {
+      console.error('\nSmoke precisa de ADMIN_OTP_DEBUG_RETURN=true ou NODE_ENV=development para ler o código.');
+      process.exit(1);
+    }
+    loginBody = { email: 'admin@delivery.local', code };
   }
 
   const login = await fetch(`${base}/admin/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@delivery.local', code }),
+    body: JSON.stringify(loginBody),
   });
   const loginText = await login.text();
   console.log(`POST ${base}/admin/login ->`, login.status, loginText.slice(0, 180));

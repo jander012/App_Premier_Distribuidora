@@ -13,6 +13,7 @@ export function AdminPlatformPage() {
   const navigate = useNavigate();
   const [stores, setStores] = useState([]);
   const [admins, setAdmins] = useState([]);
+  const [authMode, setAuthMode] = useState('password');
   const [err, setErr] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -22,6 +23,7 @@ export function AdminPlatformPage() {
 
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newIsSuper, setNewIsSuper] = useState(false);
   const [newStoreIds, setNewStoreIds] = useState(() => new Set());
 
@@ -52,6 +54,20 @@ export function AdminPlatformPage() {
     }
     load();
   }, [load, navigate]);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/admin/auth-mode')
+      .then((res) => {
+        if (alive && res?.mode === 'email_code') setAuthMode('email_code');
+      })
+      .catch(() => {
+        if (alive) setAuthMode('password');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function submitStore(e) {
     e.preventDefault();
@@ -96,6 +112,10 @@ export function AdminPlatformPage() {
       setErr('Informe o e-mail do funcionário.');
       return;
     }
+    if (authMode === 'password' && newPassword.length < 6) {
+      setErr('Senha deve ter pelo menos 6 caracteres.');
+      return;
+    }
     setBusy(true);
     try {
       await api.post(
@@ -103,6 +123,7 @@ export function AdminPlatformPage() {
         {
           name: newName.trim(),
           email: newEmail.trim().toLowerCase(),
+          ...(authMode === 'password' ? { password: newPassword } : {}),
           isSuperAdmin: newIsSuper,
           storeIds: [...newStoreIds],
         },
@@ -110,6 +131,7 @@ export function AdminPlatformPage() {
       );
       setNewName('');
       setNewEmail('');
+      setNewPassword('');
       setNewIsSuper(false);
       setNewStoreIds(new Set());
       await load();
@@ -228,6 +250,17 @@ export function AdminPlatformPage() {
               autoComplete="off"
             />
           </div>
+          {authMode === 'password' && (
+            <div className="field">
+              <label>Senha</label>
+              <input
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                autoComplete="new-password"
+              />
+            </div>
+          )}
           <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <input type="checkbox" checked={newIsSuper} onChange={(e) => setNewIsSuper(e.target.checked)} />
             Super administrador

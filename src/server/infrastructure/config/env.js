@@ -46,6 +46,12 @@ function parseCorsOrigins() {
     .filter(Boolean);
 }
 
+function hasAdminEmailLoginConfig() {
+  const smtpHost = (process.env.SMTP_HOST || '').trim();
+  const mailFrom = (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim();
+  return Boolean(smtpHost && mailFrom);
+}
+
 export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
@@ -57,6 +63,7 @@ export const env = {
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',
   adminOtpExpiresMinutes: Number(process.env.ADMIN_OTP_EXPIRES_MINUTES) || 10,
   adminOtpDebugReturn: process.env.ADMIN_OTP_DEBUG_RETURN === 'true' || (process.env.NODE_ENV || 'development') === 'development',
+  adminEmailLoginEnabled: hasAdminEmailLoginConfig(),
   publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:3000',
   corsOrigins: parseCorsOrigins(),
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',

@@ -47,7 +47,14 @@ function generateNumericCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 }
 
+export function getAuthMode() {
+  return env.adminEmailLoginEnabled ? 'email_code' : 'password';
+}
+
 export async function requestAccessCode(email) {
+  if (!env.adminEmailLoginEnabled) {
+    throw new AppError(503, 'Login por código indisponível. Configure SMTP para ativar.');
+  }
   const normalized = normalizeAdminEmail(email);
   if (!normalized) throw new AppError(400, 'Informe o e-mail.');
 
@@ -66,10 +73,23 @@ export async function requestAccessCode(email) {
   return env.adminOtpDebugReturn ? { ok: true, code } : { ok: true };
 }
 
-export async function login(email, code) {
+export async function login(email, secret) {
   const normalized = normalizeAdminEmail(email);
   const user = await repo.findAdminByEmail(normalized);
-  if (!user) throw new AppError(401, 'Código inválido ou expirado');
+  if (!user) {
+    throw new AppError(401, env.adminEmailLoginEnabled ? 'Código inválido ou expirado' : 'Credenciais inválidas');
+  }
+
+  if (!env.adminEmailLoginEnabled) {
+    let ok = false;
+    try {
+      ok = await bcrypt.compare(String(secret ?? ''), user.password_hash);
+    } catch {
+      ok = false;
+    }
+    if (!ok) throw new AppError(401, 'Credenciais inválidas');
+    return buildLoginResponse(user);
+  }
 
   const loginCode = await repo.findLatestActiveAdminLoginCode(user.id);
   if (!loginCode || Number(loginCode.attempts) >= 5) {
@@ -78,7 +98,7 @@ export async function login(email, code) {
 
   let ok = false;
   try {
-    ok = await bcrypt.compare(String(code ?? '').trim(), loginCode.code_hash);
+    ok = await bcrypt.compare(String(secret ?? '').trim(), loginCode.code_hash);
   } catch {
     ok = false;
   }

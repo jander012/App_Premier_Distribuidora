@@ -74,9 +74,9 @@ export const openApiSpec = {
       },
       LoginRequest: {
         type: 'object',
-        required: ['email', 'code'],
         properties: {
           email: { type: 'string', format: 'email', example: 'admin@premier.local' },
+          password: { type: 'string', example: 'senha-secreta', description: 'Usado quando /admin/auth-mode retorna password.' },
           code: { type: 'string', example: '123456' },
         },
       },
@@ -486,6 +486,13 @@ export const openApiSpec = {
         security: [{ internalApiKey: [] }],
         requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/GenericObject' } } } },
         responses: { 200: { description: 'Mensagem enviada.' }, 403: { $ref: '#/components/responses/Forbidden' } },
+      },
+    },
+    '/admin/auth-mode': {
+      get: {
+        tags: ['Admin'],
+        summary: 'Informa o modo de login administrativo',
+        responses: { 200: { description: 'Modo password ou email_code.' } },
       },
     },
     '/admin/request-code': {

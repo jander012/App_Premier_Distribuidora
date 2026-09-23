@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from '../navigation.js';
 import { api } from '../api/client.js';
 import {
@@ -10,13 +10,29 @@ import {
 
 export function AdminLoginPage() {
   const nav = useNavigate();
+  const [authMode, setAuthMode] = useState('password');
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [codeRequested, setCodeRequested] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState(null);
   const [info, setInfo] = useState(null);
   const [pickStores, setPickStores] = useState(null);
+
+  useEffect(() => {
+    let alive = true;
+    api.get('/admin/auth-mode')
+      .then((res) => {
+        if (alive && res?.mode === 'email_code') setAuthMode('email_code');
+      })
+      .catch(() => {
+        if (alive) setAuthMode('password');
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   async function requestCode(e) {
     e.preventDefault();
@@ -41,17 +57,23 @@ export function AdminLoginPage() {
     }
   }
 
-  async function submitCode(e) {
+  async function submitLogin(e) {
     e.preventDefault();
     setErr(null);
     setInfo(null);
     try {
       const payload = {
         email: String(email ?? '').trim().toLowerCase(),
-        code: String(code ?? '').trim(),
+        ...(authMode === 'email_code'
+          ? { code: String(code ?? '').trim() }
+          : { password: String(password ?? '') }),
       };
-      if (!payload.code) {
+      if (authMode === 'email_code' && !payload.code) {
         setErr('Informe o código enviado ao e-mail.');
+        return;
+      }
+      if (authMode === 'password' && !payload.password) {
+        setErr('Informe a senha.');
         return;
       }
       setBusy(true);
@@ -133,7 +155,10 @@ export function AdminLoginPage() {
   return (
     <div style={{ maxWidth: 400, margin: '2rem auto' }}>
       <h1 className="page-title">Admin</h1>
-      <form className="card" onSubmit={codeRequested ? submitCode : requestCode}>
+      <form
+        className="card"
+        onSubmit={authMode === 'email_code' ? (codeRequested ? submitLogin : requestCode) : submitLogin}
+      >
         <div className="field">
           <label>E-mail</label>
           <input
@@ -151,7 +176,19 @@ export function AdminLoginPage() {
             disabled={busy}
           />
         </div>
-        {codeRequested && (
+        {authMode === 'password' && (
+          <div className="field">
+            <label>Senha</label>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+              disabled={busy}
+            />
+          </div>
+        )}
+        {authMode === 'email_code' && codeRequested && (
           <div className="field">
             <label>Código de acesso</label>
             <input
@@ -167,9 +204,9 @@ export function AdminLoginPage() {
         {err && <p className="err">{err}</p>}
         {info && <p className="muted">{info}</p>}
         <button type="submit" className="btn btn-primary" disabled={busy}>
-          {codeRequested ? 'Entrar' : 'Enviar código'}
+          {authMode === 'email_code' ? (codeRequested ? 'Entrar' : 'Enviar código') : 'Entrar'}
         </button>
-        {codeRequested && (
+        {authMode === 'email_code' && codeRequested && (
           <button
             type="button"
             className="btn btn-ghost"
