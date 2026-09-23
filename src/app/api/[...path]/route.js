@@ -4,6 +4,7 @@ import { authenticateAdmin } from '../../../server/interfaces/http/middlewares/a
 import { requireAdminStore } from '../../../server/interfaces/http/middlewares/requireAdminStore.js';
 import { authenticateClient } from '../../../server/interfaces/http/middlewares/authenticateClient.js';
 import { authenticateCart } from '../../../server/interfaces/http/middlewares/authenticateCart.js';
+import { authenticateDriver } from '../../../server/interfaces/http/middlewares/authenticateDriver.js';
 import { requireInternalApiKey } from '../../../server/interfaces/http/middlewares/requireInternalApiKey.js';
 import { requireSuperAdmin } from '../../../server/interfaces/http/middlewares/requireSuperAdmin.js';
 import * as menuController from '../../../server/interfaces/http/controllers/menuController.js';
@@ -23,6 +24,7 @@ import * as adminMediaController from '../../../server/interfaces/http/controlle
 import * as mediaFileController from '../../../server/interfaces/http/controllers/mediaFileController.js';
 import * as adminPlatformController from '../../../server/interfaces/http/controllers/adminPlatformController.js';
 import * as healthDbController from '../../../server/interfaces/http/controllers/healthDbController.js';
+import * as driverController from '../../../server/interfaces/http/controllers/driverController.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -60,7 +62,17 @@ const routes = [
   ['POST', '/orders', [authenticateClient, authenticateCart, orderController.create]],
   ['GET', '/orders/me', [authenticateClient, orderController.listMine]],
   ['GET', '/orders/:id', [authenticateClient, orderController.getOne]],
+  ['GET', '/orders/:id/messages', [authenticateClient, driverController.listOrderMessages]],
+  ['POST', '/orders/:id/messages', [authenticateClient, driverController.addOrderMessage]],
+  ['POST', '/orders/:id/reviews', [authenticateClient, driverController.addOrderReview]],
   ['PATCH', '/orders/:id/status', [...adminProtected, orderController.patchStatus]],
+  ['POST', '/driver/login', [driverController.driverLogin]],
+  ['GET', '/driver/me', [authenticateDriver, driverController.driverMe]],
+  ['GET', '/driver/runs', [authenticateDriver, driverController.driverListRuns]],
+  ['POST', '/driver/runs/:id/accept', [authenticateDriver, driverController.driverAcceptRun]],
+  ['PATCH', '/driver/runs/:id', [authenticateDriver, driverController.driverUpdateRun]],
+  ['GET', '/driver/orders/:id/messages', [authenticateDriver, driverController.listOrderMessages]],
+  ['POST', '/driver/orders/:id/messages', [authenticateDriver, driverController.addOrderMessage]],
   ['GET', '/delivery-confirmations/:token', [orderController.getDeliveryConfirmation]],
   ['POST', '/delivery-confirmations/:token/confirm', [orderController.confirmDelivery]],
   ['POST', '/payments/pix', [requireInternalApiKey, paymentController.pix]],
@@ -79,6 +91,10 @@ const routes = [
   ['GET', '/admin/orders', [...adminProtected, adminController.listOrders]],
   ['GET', '/admin/orders/:id', [...adminProtected, adminController.getOrderAdmin]],
   ['POST', '/admin/orders/:id/print-thermal', [...adminProtected, adminController.printOrderThermal]],
+  ['GET', '/admin/drivers', [...adminProtected, driverController.adminListDrivers]],
+  ['POST', '/admin/drivers', [...adminProtected, driverController.adminCreateDriver]],
+  ['PUT', '/admin/drivers/:id', [...adminProtected, driverController.adminUpdateDriver]],
+  ['GET', '/admin/delivery-runs', [...adminProtected, driverController.adminListRuns]],
   ['GET', '/admin/customers', [...adminProtected, adminController.listCustomers]],
   ['POST', '/admin/products', [...adminProtected, adminController.createProduct]],
   ['PUT', '/admin/products/:id', [...adminProtected, adminController.updateProduct]],

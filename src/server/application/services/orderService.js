@@ -3,6 +3,7 @@ import * as cartService from './cartService.js';
 import * as customerService from './customerService.js';
 import * as cartRepo from '../../infrastructure/repositories/cartRepository.js';
 import * as orderRepo from '../../infrastructure/repositories/orderRepository.js';
+import * as driverRepo from '../../infrastructure/repositories/driverRepository.js';
 import * as customerRepo from '../../infrastructure/repositories/customerRepository.js';
 import * as whatsappService from './whatsappService.js';
 import * as paymentService from './paymentService.js';
@@ -71,6 +72,8 @@ export async function createOrder(body, opts = {}) {
   const { customer, address } = await customerService.ensureCustomerForOrder(phone, body);
 
   const preTotal = Math.round((Number(summary.subtotal) + Number(summary.deliveryFee)) * 100) / 100;
+  const expressDelivery = body.expressDelivery === true || body.express_delivery === true;
+  const expressDeliveryFee = expressDelivery ? Number(body.expressDeliveryFee ?? body.express_delivery_fee ?? 0) : 0;
   const rawCoupon = body.couponCode ?? body.coupon_code;
   let couponId = null;
   let couponDiscount = 0;
@@ -85,7 +88,7 @@ export async function createOrder(body, opts = {}) {
     couponId = cr.couponId;
     couponDiscount = cr.discountAmount;
   }
-  const finalTotal = Math.max(0, Math.round((preTotal - couponDiscount) * 100) / 100);
+  const finalTotal = Math.max(0, Math.round((preTotal + expressDeliveryFee - couponDiscount) * 100) / 100);
 
   const client = await pool.connect();
   let order;
@@ -95,13 +98,15 @@ export async function createOrder(body, opts = {}) {
     const orderResult = await client.query(
       `INSERT INTO orders (
         store_id, customer_id, cart_id, status, subtotal, delivery_fee, coupon_id, coupon_discount, total,
+        express_delivery, express_delivery_fee,
         payment_method_code, payment_meta,
         delivery_street, delivery_number, delivery_neighborhood, delivery_zip_code,
         delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
         customer_full_name, customer_cpf, customer_email, customer_phone
       ) VALUES (
         $1, $2, $3, 'received', $4, $5, $6, $7, $8, $9, $10,
-        $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
+        $11, $12,
+        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
       )`,
       [
         summary.storeId,
@@ -112,6 +117,8 @@ export async function createOrder(body, opts = {}) {
         couponId,
         couponDiscount,
         finalTotal,
+        expressDelivery,
+        expressDeliveryFee,
         body.paymentMethodCode,
         JSON.stringify(paymentMeta),
         address.street,
@@ -180,6 +187,12 @@ export async function createOrder(body, opts = {}) {
   }
 
   const items = await orderRepo.getOrderItems(order.id);
+  try {
+    await driverRepo.ensureRunForOrder(order.id, summary.storeId);
+  } catch (runErr) {
+    // eslint-disable-next-line no-console
+    console.error('delivery_run:', runErr.message);
+  }
 
   await externalOrderIntegrationService.dispatchOrderIntegrations(order, items);
 
@@ -245,6 +258,14 @@ export async function updateStatus(orderId, status, { notify = true, storeId = n
   let order = await orderRepo.updateOrderStatus(orderId, status, storeId);
   if (!order) throw new AppError(404, 'Pedido não encontrado');
   await orderRepo.addStatusHistory(orderId, status);
+  if (status === 'out_for_delivery') {
+    try {
+      await driverRepo.ensureRunForOrder(orderId, order.store_id);
+    } catch (runErr) {
+      // eslint-disable-next-line no-console
+      console.error('delivery_run:', runErr.message);
+    }
+  }
   if (status === 'delivered_pending_confirmation') {
     const token = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);

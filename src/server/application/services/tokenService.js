@@ -14,6 +14,12 @@ export function signClientToken(phone) {
   });
 }
 
+export function signDriverToken(driverId, storeId) {
+  return jwt.sign({ typ: 'driver', driverId: Number(driverId), storeId: Number(storeId) }, env.jwtSecret, {
+    expiresIn: env.jwtExpiresIn,
+  });
+}
+
 export function verifyCartToken(token) {
   try {
     const p = jwt.verify(token, env.jwtSecret);
@@ -31,5 +37,15 @@ export function verifyClientToken(token) {
     return String(p.phone);
   } catch {
     throw new AppError(401, 'Sessão inválida ou expirada');
+  }
+}
+
+export function verifyDriverToken(token) {
+  try {
+    const p = jwt.verify(token, env.jwtSecret);
+    if (p.typ !== 'driver' || !p.driverId || !p.storeId) throw new Error('invalid');
+    return { driverId: Number(p.driverId), storeId: Number(p.storeId) };
+  } catch {
+    throw new AppError(401, 'Sessão do entregador inválida ou expirada');
   }
 }
