@@ -104,6 +104,10 @@ export async function createCart(customerId) {
 export async function addItem(cartId, body) {
   const psid = await cartRepo.getProductStoreId(body.productId);
   if (!psid) throw new AppError(404, 'Produto não encontrado');
+  const ageRestricted = await cartRepo.getProductAgeRestriction(body.productId, psid);
+  if (ageRestricted && body.ageConfirmed !== true) {
+    throw new AppError(403, 'Produto restrito para maiores de 18 anos.');
+  }
   const cart = await cartRepo.getCart(cartId);
   if (!cart) throw new AppError(404, 'Carrinho não encontrado');
   if (cart.store_id != null && cart.store_id !== psid) {

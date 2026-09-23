@@ -3,12 +3,19 @@ import { Link, useNavigate, useParams } from '../navigation.js';
 import { api } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';
+import { readAgeGateDecision, restrictedQueryParam, writeAgeGateDecision } from '../utils/ageGate.js';
+
+function withAgeQuery(path, isAdult) {
+  const join = path.includes('?') ? '&' : '?';
+  return `${path}${join}${restrictedQueryParam(isAdult)}`;
+}
 
 export function ProductPage() {
   const { id } = useParams();
   const nav = useNavigate();
   const { addItem } = useCart();
   const { storeSlug } = useStore();
+  const [ageDecision, setAgeDecision] = useState(() => readAgeGateDecision(storeSlug));
   const [product, setProduct] = useState(null);
   const [qty, setQty] = useState(1);
   const [note, setNote] = useState('');
@@ -17,10 +24,15 @@ export function ProductPage() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
+    setAgeDecision(readAgeGateDecision(storeSlug));
+  }, [storeSlug]);
+
+  useEffect(() => {
+    if (ageDecision === null) return;
     let on = true;
     (async () => {
       try {
-        const p = await api.get(withStoreQuery(`/products/${id}`, storeSlug));
+        const p = await api.get(withAgeQuery(withStoreQuery(`/products/${id}`, storeSlug), ageDecision));
         if (on) setProduct(p);
       } catch (e) {
         if (on) setErr(e.message);
@@ -29,7 +41,7 @@ export function ProductPage() {
     return () => {
       on = false;
     };
-  }, [id, storeSlug]);
+  }, [id, storeSlug, ageDecision]);
 
   function toggleOption(opt) {
     setSelected((prev) => {
@@ -69,6 +81,38 @@ export function ProductPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (ageDecision === null) {
+    return (
+      <section className="age-gate card" aria-labelledby="age-gate-title">
+        <span className="age-gate__eyebrow">Antes de acessar o produto</span>
+        <h1 id="age-gate-title">Você tem 18 anos ou mais?</h1>
+        <p className="muted">Sua resposta define se produtos de categorias restritas podem ser exibidos.</p>
+        <div className="age-gate__actions">
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              writeAgeGateDecision(storeSlug, true);
+              setAgeDecision(true);
+            }}
+          >
+            Sim, tenho 18 anos ou mais
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={() => {
+              writeAgeGateDecision(storeSlug, false);
+              setAgeDecision(false);
+            }}
+          >
+            Não
+          </button>
+        </div>
+      </section>
+    );
   }
 
   if (!product) {

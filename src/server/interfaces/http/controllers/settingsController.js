@@ -40,6 +40,7 @@ export async function getPublicSettings(req, res, next) {
         .filter((z) => z.geojson),
       deliveryOriginLat: originOk ? oLa : null,
       deliveryOriginLng: originOk ? oLn : null,
+      deliveryOriginAddress: s?.delivery_origin_address || null,
       /** Distância de rota (OSRM) quando há origem + ponto de entrega; senão km informado. */
       deliveryPricingUsesRoute,
       menuBaseUrl: s?.menu_base_url || null,

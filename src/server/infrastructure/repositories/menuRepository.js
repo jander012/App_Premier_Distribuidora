@@ -16,25 +16,29 @@ function localMediaFileIdFromUrl(url) {
   return m4 ? m4[1] : null;
 }
 
-export async function listCategories(storeId) {
+export async function listCategories(storeId, { includeAgeRestricted = false } = {}) {
   const { rows } = await query(
-    `SELECT id, name, sort_order, active FROM categories
+    `SELECT id, name, sort_order, active, is_age_restricted FROM categories
      WHERE active = true AND store_id = $1
+       ${includeAgeRestricted ? '' : 'AND is_age_restricted = false'}
      ORDER BY sort_order, id`,
     [storeId]
   );
   return rows;
 }
 
-export async function listProducts({ storeId, categoryId, availableOnly = true } = {}) {
+export async function listProducts({ storeId, categoryId, availableOnly = true, includeAgeRestricted = false } = {}) {
   if (!storeId) throw new Error('storeId obrigatório');
   let sql = `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+     c.is_age_restricted,
      COALESCE(m.public_url, p.image_url) AS image_url
      FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      WHERE p.store_id = $1`;
   const params = [storeId];
   if (availableOnly) sql += ` AND p.available = true`;
+  if (!includeAgeRestricted) sql += ` AND c.is_age_restricted = false`;
   if (categoryId) {
     params.push(categoryId);
     sql += ` AND p.category_id = $${params.length}`;
@@ -46,7 +50,7 @@ export async function listProducts({ storeId, categoryId, availableOnly = true }
 
 export async function listProductsPage(
   storeId,
-  { page = 1, limit = 24, categoryId, q, availableOnly = true } = {}
+  { page = 1, limit = 24, categoryId, q, availableOnly = true, includeAgeRestricted = false } = {}
 ) {
   if (!storeId) throw new Error('storeId obrigatório');
   const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 48);
@@ -57,6 +61,7 @@ export async function listProductsPage(
   const params = [storeId];
   let where = 'WHERE p.store_id = $1';
   if (availableOnly) where += ' AND p.available = true';
+  if (!includeAgeRestricted) where += ' AND c.is_age_restricted = false';
   if (categoryId && !search) {
     params.push(categoryId);
     where += ` AND p.category_id = $${params.length}`;
@@ -66,13 +71,20 @@ export async function listProductsPage(
     where += ` AND (p.name LIKE $${params.length} OR COALESCE(p.description,'') LIKE $${params.length})`;
   }
 
-  const { rows: countRows } = await query(`SELECT COUNT(*) AS n FROM products p ${where}`, params);
+  const { rows: countRows } = await query(
+    `SELECT COUNT(*) AS n FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
+     ${where}`,
+    params
+  );
   const total = countRows[0]?.n ?? 0;
 
   const { rows } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+            c.is_age_restricted,
             COALESCE(m.public_url, p.image_url) AS image_url
      FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      ${where}
      ORDER BY p.category_id, p.id
@@ -92,6 +104,7 @@ export async function listProductsPage(
 
 const HIGHLIGHT_PRODUCT_FIELDS = `
   p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+  c.is_age_restricted,
   COALESCE(m.public_url, p.image_url) AS image_url,
   (
     SELECT COUNT(*)
@@ -100,7 +113,7 @@ const HIGHLIGHT_PRODUCT_FIELDS = `
   ) AS required_options_count
 `;
 
-export async function listBestSellingProducts(storeId, { limit = 12 } = {}) {
+export async function listBestSellingProducts(storeId, { limit = 12, includeAgeRestricted = false } = {}) {
   if (!storeId) throw new Error('storeId obrigatório');
   const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
   const { rows } = await query(
@@ -109,11 +122,13 @@ export async function listBestSellingProducts(storeId, { limit = 12 } = {}) {
      FROM order_items oi
      INNER JOIN orders o ON o.id = oi.order_id
      INNER JOIN products p ON p.id = oi.product_id AND p.store_id = o.store_id
+     INNER JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      WHERE o.store_id = $1
        AND o.status <> 'cancelled'
        AND p.available = true
-     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, m.public_url, p.image_url
+       ${includeAgeRestricted ? '' : 'AND c.is_age_restricted = false'}
+     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, c.is_age_restricted, m.public_url, p.image_url
      HAVING sold_qty > 0
      ORDER BY sold_qty DESC, p.name ASC
      LIMIT ${safeLimit}`,
@@ -126,7 +141,7 @@ export async function listBestSellingProducts(storeId, { limit = 12 } = {}) {
   }));
 }
 
-export async function listBuyAgainProducts(storeId, customerPhone, { limit = 12 } = {}) {
+export async function listBuyAgainProducts(storeId, customerPhone, { limit = 12, includeAgeRestricted = false } = {}) {
   if (!storeId) throw new Error('storeId obrigatório');
   if (!customerPhone) return [];
   const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
@@ -137,12 +152,14 @@ export async function listBuyAgainProducts(storeId, customerPhone, { limit = 12 
      FROM order_items oi
      INNER JOIN orders o ON o.id = oi.order_id
      INNER JOIN products p ON p.id = oi.product_id AND p.store_id = o.store_id
+     INNER JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      WHERE o.store_id = $1
        AND o.customer_phone = $2
        AND o.status <> 'cancelled'
        AND p.available = true
-     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, m.public_url, p.image_url
+       ${includeAgeRestricted ? '' : 'AND c.is_age_restricted = false'}
+     GROUP BY p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id, c.is_age_restricted, m.public_url, p.image_url
      ORDER BY last_ordered_at DESC
      LIMIT ${safeLimit}`,
     [storeId, customerPhone]
@@ -154,13 +171,16 @@ export async function listBuyAgainProducts(storeId, customerPhone, { limit = 12 
   }));
 }
 
-export async function getProductWithOptions(id, storeId) {
+export async function getProductWithOptions(id, storeId, { includeAgeRestricted = false } = {}) {
   const { rows: products } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+            c.is_age_restricted,
             COALESCE(m.public_url, p.image_url) AS image_url
      FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
-     WHERE p.id = $1 AND p.store_id = $2`,
+     WHERE p.id = $1 AND p.store_id = $2
+       ${includeAgeRestricted ? '' : 'AND c.is_age_restricted = false'}`,
     [id, storeId]
   );
   const product = products[0];
@@ -177,6 +197,7 @@ export async function adminGetProductById(id, storeId) {
   const { rows: products } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.image_url, p.image_asset_id,
             p.available, p.store_id, p.created_at, p.updated_at, c.name AS category_name,
+            c.is_age_restricted,
             COALESCE(m.public_url, p.image_url) AS display_image_url
      FROM products p
      JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
@@ -206,12 +227,12 @@ export async function adminListCategories(storeId) {
   return rows;
 }
 
-export async function adminCreateCategory({ name, sortOrder = 0, active = true, storeId }) {
+export async function adminCreateCategory({ name, sortOrder = 0, active = true, isAgeRestricted = false, storeId }) {
   const n = String(name || '').trim();
   if (!n) throw new AppError(400, 'Nome da categoria obrigatório');
   const result = await query(
-    `INSERT INTO categories (name, sort_order, active, store_id) VALUES ($1, $2, $3, $4)`,
-    [n, Number(sortOrder) || 0, active !== false, storeId]
+    `INSERT INTO categories (name, sort_order, active, is_age_restricted, store_id) VALUES ($1, $2, $3, $4, $5)`,
+    [n, Number(sortOrder) || 0, active !== false, isAgeRestricted === true, storeId]
   );
   const { rows } = await query(`SELECT * FROM categories WHERE id = $1`, [result.insertId]);
   return rows[0];
@@ -224,10 +245,12 @@ export async function adminUpdateCategory(id, storeId, data) {
   const name = data.name !== undefined ? data.name : row.name;
   const sortOrder = data.sortOrder !== undefined ? data.sortOrder : row.sort_order;
   const active = data.active !== undefined ? data.active : row.active;
+  const isAgeRestricted =
+    data.isAgeRestricted !== undefined ? data.isAgeRestricted : row.is_age_restricted;
   await query(
-    `UPDATE categories SET name = $3, sort_order = $4, active = $5, updated_at = now()
+    `UPDATE categories SET name = $3, sort_order = $4, active = $5, is_age_restricted = $6, updated_at = now()
      WHERE id = $1 AND store_id = $2`,
-    [id, storeId, name, sortOrder, active]
+    [id, storeId, name, sortOrder, active, isAgeRestricted]
   );
   const { rows } = await query(`SELECT * FROM categories WHERE id = $1 AND store_id = $2`, [id, storeId]);
   return rows[0];
@@ -397,4 +420,15 @@ export async function adminListProductsPage(storeId, { page = 1, limit = 12, q }
     limit: safeLimit,
     totalPages: Math.max(1, Math.ceil(total / safeLimit) || 1),
   };
+}
+
+export async function getProductAgeRestriction(productId, storeId) {
+  const { rows } = await query(
+    `SELECT c.is_age_restricted
+     FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
+     WHERE p.id = $1 AND p.store_id = $2`,
+    [productId, storeId]
+  );
+  return rows[0]?.is_age_restricted === true || rows[0]?.is_age_restricted === 1;
 }

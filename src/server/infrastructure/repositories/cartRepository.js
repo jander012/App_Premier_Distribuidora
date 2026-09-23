@@ -43,6 +43,29 @@ export async function getProductStoreId(productId) {
   return rows[0]?.store_id ?? null;
 }
 
+export async function getProductAgeRestriction(productId, storeId) {
+  const { rows } = await query(
+    `SELECT c.is_age_restricted
+     FROM products p
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
+     WHERE p.id = $1 AND p.store_id = $2`,
+    [productId, storeId]
+  );
+  return rows[0]?.is_age_restricted === true || rows[0]?.is_age_restricted === 1;
+}
+
+export async function cartHasAgeRestrictedItems(cartId) {
+  const { rows } = await query(
+    `SELECT COUNT(*) AS n
+     FROM cart_items ci
+     JOIN products p ON p.id = ci.product_id
+     JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
+     WHERE ci.cart_id = $1 AND c.is_age_restricted = true`,
+    [cartId]
+  );
+  return Number(rows[0]?.n ?? 0) > 0;
+}
+
 export async function setCartStoreId(cartId, storeId) {
   await query(`UPDATE carts SET store_id = $2, updated_at = now() WHERE id = $1`, [cartId, storeId]);
 }

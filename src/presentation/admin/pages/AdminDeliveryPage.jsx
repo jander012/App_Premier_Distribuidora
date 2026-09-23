@@ -387,8 +387,8 @@ export function AdminDeliveryPage() {
         <h2 style={{ fontSize: '1.05rem' }}>Preço por km por horário</h2>
         <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
           Quando ativo, a taxa de entrega = <strong>máximo entre o valor mínimo da corrida</strong> e{' '}
-          <strong>distância (km) × R$/km</strong> do horário do pedido (servidor). Faixas fixas por km abaixo são
-          ignoradas neste modo. Use origem no mapa + rota como na opção anterior.
+          <strong>distância (km) × R$/km</strong> do horário do pedido (servidor). Se as faixas fixas por km abaixo
+          estiverem ligadas e configuradas, elas têm prioridade. Use origem no mapa + rota como na opção anterior.
         </p>
         <label className="row-between" style={{ cursor: 'pointer', marginBottom: '0.75rem' }}>
           <span>Usar R$/km por faixa de horário</span>

@@ -10,6 +10,7 @@ export function AdminCategoriesPage() {
   const [name, setName] = useState('');
   const [sortOrder, setSortOrder] = useState('0');
   const [active, setActive] = useState(true);
+  const [isAgeRestricted, setIsAgeRestricted] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const load = useCallback(async () => {
@@ -31,6 +32,7 @@ export function AdminCategoriesPage() {
     setName(c.name || '');
     setSortOrder(String(c.sort_order ?? 0));
     setActive(c.active !== false);
+    setIsAgeRestricted(Boolean(c.is_age_restricted));
   }
 
   function clearForm() {
@@ -38,6 +40,7 @@ export function AdminCategoriesPage() {
     setName('');
     setSortOrder('0');
     setActive(true);
+    setIsAgeRestricted(false);
   }
 
   async function submit(e) {
@@ -53,13 +56,13 @@ export function AdminCategoriesPage() {
       if (editingId != null) {
         await api.put(
           `/admin/categories/${editingId}`,
-          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active },
+          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active, isAgeRestricted },
           { headers: adminHeaders() }
         );
       } else {
         await api.post(
           '/admin/categories',
-          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active },
+          { name: name.trim(), sortOrder: Number.isFinite(so) ? so : 0, active, isAgeRestricted },
           { headers: adminHeaders() }
         );
       }
@@ -126,6 +129,10 @@ export function AdminCategoriesPage() {
           <span>Ativa no cardápio</span>
           <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
         </label>
+        <label className="row-between" style={{ cursor: 'pointer', marginBottom: '1rem' }}>
+          <span>Categoria para maiores de 18 anos</span>
+          <input type="checkbox" checked={isAgeRestricted} onChange={(e) => setIsAgeRestricted(e.target.checked)} />
+        </label>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
           <button type="submit" className="btn btn-primary" disabled={busy}>
             {busy ? 'Salvando…' : editingId != null ? 'Salvar alterações' : 'Cadastrar'}
@@ -146,6 +153,7 @@ export function AdminCategoriesPage() {
               <th>Nome</th>
               <th>Ordem</th>
               <th>Ativa</th>
+              <th>18+</th>
               <th>Produtos</th>
               <th style={{ minWidth: 160 }}>Ações</th>
             </tr>
@@ -157,6 +165,7 @@ export function AdminCategoriesPage() {
                 <td>{c.name}</td>
                 <td>{c.sort_order}</td>
                 <td>{c.active ? 'Sim' : 'Não'}</td>
+                <td>{c.is_age_restricted ? 'Sim' : 'Não'}</td>
                 <td>{c.product_count ?? 0}</td>
                 <td>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>

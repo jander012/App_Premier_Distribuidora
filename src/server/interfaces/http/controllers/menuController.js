@@ -10,10 +10,15 @@ async function storeIdFromSlug(req) {
   return store.id;
 }
 
+function wantsAgeRestricted(req) {
+  const raw = req.query.includeAgeRestricted ?? req.query.ageConfirmed ?? req.query.adult;
+  return raw === true || raw === 'true' || raw === '1' || raw === 1;
+}
+
 export async function listCategories(req, res, next) {
   try {
     const storeId = await storeIdFromSlug(req);
-    const rows = await menuRepo.listCategories(storeId);
+    const rows = await menuRepo.listCategories(storeId, { includeAgeRestricted: wantsAgeRestricted(req) });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -37,10 +42,16 @@ export async function listProducts(req, res, next) {
         categoryId: q ? undefined : categoryId,
         q,
         availableOnly: true,
+        includeAgeRestricted: wantsAgeRestricted(req),
       });
       return res.json(result);
     }
-    const rows = await menuRepo.listProducts({ storeId, categoryId, availableOnly: true });
+    const rows = await menuRepo.listProducts({
+      storeId,
+      categoryId,
+      availableOnly: true,
+      includeAgeRestricted: wantsAgeRestricted(req),
+    });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -51,7 +62,10 @@ export async function listBestSellers(req, res, next) {
   try {
     const storeId = await storeIdFromSlug(req);
     const limit = Number(req.query.limit) || 12;
-    const rows = await menuRepo.listBestSellingProducts(storeId, { limit });
+    const rows = await menuRepo.listBestSellingProducts(storeId, {
+      limit,
+      includeAgeRestricted: wantsAgeRestricted(req),
+    });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -62,7 +76,10 @@ export async function listBuyAgain(req, res, next) {
   try {
     const storeId = await storeIdFromSlug(req);
     const limit = Number(req.query.limit) || 12;
-    const rows = await menuRepo.listBuyAgainProducts(storeId, req.clientPhone, { limit });
+    const rows = await menuRepo.listBuyAgainProducts(storeId, req.clientPhone, {
+      limit,
+      includeAgeRestricted: wantsAgeRestricted(req),
+    });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -73,7 +90,10 @@ export async function listPromotions(req, res, next) {
   try {
     const storeId = await storeIdFromSlug(req);
     const limit = Number(req.query.limit) || 12;
-    const rows = await promoRepo.listActivePromotedProducts(storeId, { limit });
+    const rows = await promoRepo.listActivePromotedProducts(storeId, {
+      limit,
+      includeAgeRestricted: wantsAgeRestricted(req),
+    });
     res.json(rows);
   } catch (e) {
     next(e);
@@ -84,7 +104,9 @@ export async function getProduct(req, res, next) {
   try {
     const storeId = await storeIdFromSlug(req);
     const id = Number(req.params.id);
-    const p = await menuRepo.getProductWithOptions(id, storeId);
+    const p = await menuRepo.getProductWithOptions(id, storeId, {
+      includeAgeRestricted: wantsAgeRestricted(req),
+    });
     if (!p) {
       return res.status(404).json({ error: 'Produto não encontrado' });
     }

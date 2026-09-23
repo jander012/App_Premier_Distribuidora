@@ -3,12 +3,7 @@ import { useCart } from '../context/CartContext.jsx';
 
 export function CartPage() {
   const { summary, loading, error, updateItem, removeItem, deliveryKm, setDeliveryKm, deliveryPublic } = useCart();
-  const routeFromStore =
-    Boolean(deliveryPublic?.deliveryPricingUsesRoute) &&
-    Boolean(
-      deliveryPublic?.deliveryAreaPolygon?.type === 'Polygon' &&
-        deliveryPublic.deliveryAreaPolygon.coordinates?.[0]?.length >= 3
-    );
+  const routeFromStore = Boolean(deliveryPublic?.deliveryPricingUsesRoute);
 
   if (loading && !summary) {
     return <p className="muted">Carregando carrinho…</p>;

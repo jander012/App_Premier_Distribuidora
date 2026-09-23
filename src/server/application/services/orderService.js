@@ -41,6 +41,9 @@ export async function createOrder(body, opts = {}) {
   if (!cartRow) throw new AppError(404, 'Carrinho não encontrado');
   const cartLines = await cartRepo.listCartItems(cartId);
   const peekStoreId = cartRow.store_id ?? cartLines[0]?.product_store_id ?? null;
+  if (body.ageConfirmed !== true && (await cartRepo.cartHasAgeRestrictedItems(cartId))) {
+    throw new AppError(403, 'Confirme que você tem 18 anos ou mais para finalizar produtos restritos.');
+  }
 
   const addr = body.address || {};
   const deliveryLat = addr.latitude ?? addr.lat ?? body.deliveryLatitude ?? body.delivery_lat;

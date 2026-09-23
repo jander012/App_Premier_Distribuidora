@@ -7,6 +7,7 @@ const PROMO_DATE_FILTER = `
 
 const HIGHLIGHT_PRODUCT_FIELDS = `
   p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
+  c.is_age_restricted,
   COALESCE(m.public_url, p.image_url) AS image_url,
   pp.id AS promotion_id,
   pp.sort_order AS promotion_sort_order,
@@ -14,17 +15,19 @@ const HIGHLIGHT_PRODUCT_FIELDS = `
   pp.valid_until AS promotion_valid_until
 `;
 
-export async function listActivePromotedProducts(storeId, { limit = 12 } = {}) {
+export async function listActivePromotedProducts(storeId, { limit = 12, includeAgeRestricted = false } = {}) {
   if (!storeId) throw new Error('storeId obrigatório');
   const safeLimit = Math.min(Math.max(Number(limit) || 12, 1), 24);
   const { rows } = await query(
     `SELECT ${HIGHLIGHT_PRODUCT_FIELDS}
      FROM product_promotions pp
      INNER JOIN products p ON p.id = pp.product_id AND p.store_id = pp.store_id
+     INNER JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      WHERE pp.store_id = $1
        AND pp.active = true
        AND p.available = true
+       ${includeAgeRestricted ? '' : 'AND c.is_age_restricted = false'}
        ${PROMO_DATE_FILTER}
      ORDER BY pp.sort_order ASC, pp.id DESC
      LIMIT ${safeLimit}`,

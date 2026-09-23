@@ -49,6 +49,7 @@ export async function addItem(req, res, next) {
       quantity: Number(req.body.quantity),
       note: req.body.note,
       optionIds: Array.isArray(req.body.optionIds) ? req.body.optionIds.map(Number) : [],
+        ageConfirmed: req.body.ageConfirmed === true || req.body.ageConfirmed === 'true' || req.body.ageConfirmed === 1,
     });
     res.status(201).json(row);
   } catch (e) {

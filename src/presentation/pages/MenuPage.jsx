@@ -6,11 +6,17 @@ import { MenuProductCard } from '../components/MenuProductCard.jsx';
 import { MenuProductRail } from '../components/MenuProductRail.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';
+import { readAgeGateDecision, restrictedQueryParam, writeAgeGateDecision } from '../utils/ageGate.js';
 const ALL_CATEGORIES = 'all';
 const PAGE_SIZE = 24;
 const DESTAQUE_FALLBACK_COUNT = 4;
 
-function buildProductsPath(storeSlug, filterCategoryId, page, q) {
+function appendAgeParam(path, isAdult) {
+  const join = path.includes('?') ? '&' : '?';
+  return `${path}${join}${restrictedQueryParam(isAdult)}`;
+}
+
+function buildProductsPath(storeSlug, filterCategoryId, page, q, isAdult) {
   const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
   const trimmedQ = q?.trim();
   if (trimmedQ) {
@@ -18,13 +24,14 @@ function buildProductsPath(storeSlug, filterCategoryId, page, q) {
   } else if (filterCategoryId !== ALL_CATEGORIES) {
     params.set('categoryId', String(filterCategoryId));
   }
-  return withStoreQuery(`/products?${params.toString()}`, storeSlug);
+  return appendAgeParam(withStoreQuery(`/products?${params.toString()}`, storeSlug), isAdult);
 }
 
 export function MenuPage() {
   const [params] = useSearchParams();
   const { setPhone } = useCart();
   const { storeSlug } = useStore();
+  const [ageDecision, setAgeDecision] = useState(() => readAgeGateDecision(storeSlug));
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
@@ -46,6 +53,10 @@ export function MenuPage() {
   const loadingMoreRef = useRef(false);
 
   useEffect(() => {
+    setAgeDecision(readAgeGateDecision(storeSlug));
+  }, [storeSlug]);
+
+  useEffect(() => {
     const p = params.get('phone');
     if (p) setPhone(p);
   }, [params, setPhone]);
@@ -56,12 +67,13 @@ export function MenuPage() {
   }, [searchQ]);
 
   useEffect(() => {
+    if (ageDecision === null) return;
     let on = true;
     setLoadingCategories(true);
     setErr(null);
     (async () => {
       try {
-        const c = await api.get(withStoreQuery('/categories', storeSlug));
+        const c = await api.get(appendAgeParam(withStoreQuery('/categories', storeSlug), ageDecision));
         if (!on) return;
         const list = Array.isArray(c) ? c : [];
         setCategories(list);
@@ -79,17 +91,18 @@ export function MenuPage() {
     return () => {
       on = false;
     };
-  }, [storeSlug]);
+  }, [storeSlug, ageDecision]);
 
   const loadHighlights = useCallback(async () => {
+    if (ageDecision === null) return;
     setLoadingHighlights(true);
     try {
       const loggedIn = !!getClientToken();
       setClientLoggedIn(loggedIn);
-      const bestPromise = api.get(withStoreQuery('/products/best-sellers?limit=12', storeSlug));
-      const promoPromise = api.get(withStoreQuery('/products/promotions?limit=12', storeSlug));
+      const bestPromise = api.get(appendAgeParam(withStoreQuery('/products/best-sellers?limit=12', storeSlug), ageDecision));
+      const promoPromise = api.get(appendAgeParam(withStoreQuery('/products/promotions?limit=12', storeSlug), ageDecision));
       const againPromise = loggedIn
-        ? api.clientGet(withStoreQuery('/products/buy-again?limit=12', storeSlug))
+        ? api.clientGet(appendAgeParam(withStoreQuery('/products/buy-again?limit=12', storeSlug), ageDecision))
         : Promise.resolve([]);
       const [best, promo, again] = await Promise.all([bestPromise, promoPromise, againPromise]);
       setBestSellers(Array.isArray(best) ? best : []);
@@ -102,7 +115,7 @@ export function MenuPage() {
     } finally {
       setLoadingHighlights(false);
     }
-  }, [storeSlug]);
+  }, [storeSlug, ageDecision]);
 
   useEffect(() => {
     void loadHighlights();
@@ -115,7 +128,7 @@ export function MenuPage() {
 
   const fetchPage = useCallback(
     async (pageNum) => {
-      const data = await api.get(buildProductsPath(storeSlug, filterCategoryId, pageNum, searchQDebounced));
+      const data = await api.get(buildProductsPath(storeSlug, filterCategoryId, pageNum, searchQDebounced, ageDecision));
       return {
         items: Array.isArray(data?.items) ? data.items : [],
         total: Number(data?.total) || 0,
@@ -123,11 +136,11 @@ export function MenuPage() {
         page: Number(data?.page) || pageNum,
       };
     },
-    [storeSlug, filterCategoryId, searchQDebounced]
+    [storeSlug, filterCategoryId, searchQDebounced, ageDecision]
   );
 
   useEffect(() => {
-    if (filterCategoryId == null) return;
+    if (ageDecision === null || filterCategoryId == null) return;
     let on = true;
     setLoadingProducts(true);
     setErr(null);
@@ -155,7 +168,7 @@ export function MenuPage() {
     return () => {
       on = false;
     };
-  }, [filterCategoryId, searchQDebounced, fetchPage]);
+  }, [filterCategoryId, searchQDebounced, fetchPage, ageDecision]);
 
   const loadMore = useCallback(async () => {
     if (loadingMoreRef.current || !hasMore || loadingProducts) return;
@@ -223,6 +236,17 @@ export function MenuPage() {
       : '0 itens';
 
   const loading = loadingCategories;
+
+  if (ageDecision === null) {
+    return (
+      <AgeGatePrompt
+        onAnswer={(isAdult) => {
+          writeAgeGateDecision(storeSlug, isAdult);
+          setAgeDecision(isAdult);
+        }}
+      />
+    );
+  }
 
   return (
     <div className="menu-page">
@@ -328,6 +352,27 @@ export function MenuPage() {
         </>
       )}
     </div>
+  );
+}
+
+function AgeGatePrompt({ onAnswer }) {
+  return (
+    <section className="age-gate card" aria-labelledby="age-gate-title">
+      <span className="age-gate__eyebrow">Antes de acessar o cardápio</span>
+      <h1 id="age-gate-title">Você tem 18 anos ou mais?</h1>
+      <p className="muted">
+        Algumas categorias podem conter bebidas alcoólicas ou tabaco. Sua resposta define quais produtos serão exibidos
+        nesta loja.
+      </p>
+      <div className="age-gate__actions">
+        <button type="button" className="btn btn-primary" onClick={() => onAnswer(true)}>
+          Sim, tenho 18 anos ou mais
+        </button>
+        <button type="button" className="btn btn-ghost" onClick={() => onAnswer(false)}>
+          Não
+        </button>
+      </div>
+    </section>
   );
 }
 

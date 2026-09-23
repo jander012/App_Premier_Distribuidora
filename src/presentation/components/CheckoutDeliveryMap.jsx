@@ -18,6 +18,19 @@ L.Icon.Default.mergeOptions({
 });
 
 const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 60_000 };
+const STORE_ICON = L.divIcon({
+  className: 'checkout-map-icon checkout-map-icon--store',
+  html: '<span>Loja</span>',
+  iconSize: [52, 24],
+  iconAnchor: [26, 24],
+});
+
+const CUSTOMER_ICON = L.divIcon({
+  className: 'checkout-map-icon checkout-map-icon--customer',
+  html: '<span>Entrega</span>',
+  iconSize: [70, 24],
+  iconAnchor: [35, 24],
+});
 
 function geoErrorMessage(code) {
   if (code === 1) return 'Permissão negada. Permita a localização no navegador ou arraste o marcador.';
@@ -46,6 +59,10 @@ function normalizeReverseAddress(data) {
   return { street, number, neighborhood, zipCode, city, state, reference };
 }
 
+function normalizeSearchAddress(data) {
+  return normalizeReverseAddress(data);
+}
+
 async function reverseGeocode(lat, lng) {
   const url = new URL('https://nominatim.openstreetmap.org/reverse');
   url.searchParams.set('format', 'jsonv2');
@@ -60,28 +77,69 @@ async function reverseGeocode(lat, lng) {
   return normalizeReverseAddress(await res.json());
 }
 
+async function searchAddress(query) {
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('addressdetails', '1');
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('countrycodes', 'br');
+  url.searchParams.set('q', query);
+  url.searchParams.set('accept-language', 'pt-BR,pt');
+  const res = await fetch(url.toString(), {
+    headers: { Accept: 'application/json' },
+  });
+  if (!res.ok) throw new Error('geocode_failed');
+  const rows = await res.json();
+  const hit = Array.isArray(rows) ? rows[0] : null;
+  const lat = Number(hit?.lat);
+  const lng = Number(hit?.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('address_not_found');
+  return { lat, lng, address: normalizeSearchAddress(hit) };
+}
+
 /**
  * @param {{
  *   polygon?: object|null,
  *   polygonZones?: Array<{ geojson: object|null }>|null,
  *   initialLat?: number|null,
  *   initialLng?: number|null,
+ *   addressQuery?: string,
+ *   storeOriginLat?: number|null,
+ *   storeOriginLng?: number|null,
+ *   storeOriginLabel?: string,
  *   onChange: (v: {lat:number,lng:number}) => void,
  *   onAddressChange?: (v: object) => void,
  * }} props
  */
-export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initialLng, onChange, onAddressChange }) {
+export function CheckoutDeliveryMap({
+  polygon,
+  polygonZones,
+  initialLat,
+  initialLng,
+  addressQuery,
+  storeOriginLat,
+  storeOriginLng,
+  storeOriginLabel,
+  onChange,
+  onAddressChange,
+}) {
   const wrapRef = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const originMarkerRef = useRef(null);
+  const routeLineRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const onAddressChangeRef = useRef(onAddressChange);
+  const addressQueryRef = useRef(addressQuery);
   onChangeRef.current = onChange;
   onAddressChangeRef.current = onAddressChange;
+  addressQueryRef.current = addressQuery;
 
   const [geoHint, setGeoHint] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
+  const [searchLoading, setSearchLoading] = useState(false);
   const runGeoRef = useRef(() => {});
+  const runAddressSearchRef = useRef(() => {});
 
   useEffect(() => {
     if (!wrapRef.current || mapRef.current) return undefined;
@@ -95,11 +153,19 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
     const savedLat = Number.isFinite(Number(initialLat)) ? Number(initialLat) : null;
     const savedLng = Number.isFinite(Number(initialLng)) ? Number(initialLng) : null;
     const hasSeedCoords = savedLat != null && savedLng != null;
+    const originLat = Number.isFinite(Number(storeOriginLat)) ? Number(storeOriginLat) : null;
+    const originLng = Number.isFinite(Number(storeOriginLng)) ? Number(storeOriginLng) : null;
+    const hasOrigin = originLat != null && originLng != null;
+    const startCenter = hasSeedCoords
+      ? [savedLat, savedLng]
+      : hasOrigin
+        ? [originLat, originLng]
+        : [fallback[0], fallback[1]];
 
-    // Leaflet exige centro + zoom antes de flyTo/fitBounds; geolocalização pode voltar antes do layout.
+    // Leaflet exige centro + zoom antes de flyTo/fitBounds.
     const map = L.map(wrapRef.current, {
       zoomControl: true,
-      center: [fallback[0], fallback[1]],
+      center: startCenter,
       zoom: 14,
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -117,24 +183,74 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
         }).addTo(map)
       : null;
 
-    const marker = L.marker([fallback[0], fallback[1]], { draggable: true }).addTo(map);
+    const marker = L.marker(startCenter, { draggable: true, icon: CUSTOMER_ICON }).addTo(map);
     markerRef.current = marker;
+    marker.bindTooltip('Ponto de entrega', { direction: 'top', offset: [0, -22] });
 
-    const emit = () => {
+    if (hasOrigin) {
+      const originMarker = L.marker([originLat, originLng], { icon: STORE_ICON, interactive: false }).addTo(map);
+      originMarker.bindTooltip(storeOriginLabel || 'Origem da loja', { direction: 'top', offset: [0, -20] });
+      originMarkerRef.current = originMarker;
+    }
+
+    const updateStoreCustomerLine = () => {
+      if (!hasOrigin) return;
+      const ll = marker.getLatLng();
+      const points = [
+        [originLat, originLng],
+        [ll.lat, ll.lng],
+      ];
+      if (routeLineRef.current) {
+        routeLineRef.current.setLatLngs(points);
+      } else {
+        routeLineRef.current = L.polyline(points, {
+          color: '#171717',
+          weight: 3,
+          opacity: 0.7,
+          dashArray: '6 7',
+        }).addTo(map);
+      }
+    };
+
+    const emit = (opts = {}) => {
       const ll = marker.getLatLng();
       const loc = { lat: ll.lat, lng: ll.lng };
+      updateStoreCustomerLine();
       onChangeRef.current(loc);
+      if (opts.fitWithOrigin && hasOrigin) {
+        map.fitBounds(
+          L.latLngBounds([
+            [originLat, originLng],
+            [ll.lat, ll.lng],
+          ]).pad(0.25)
+        );
+      }
     };
     marker.on('dragend', emit);
+    map.on('click', (ev) => {
+      marker.setLatLng(ev.latlng);
+      emit();
+      setGeoHint(null);
+    });
 
     const applyGeoPosition = async (lat, lng, opts = {}) => {
-      const { lookupAddress = false } = opts;
+      const { lookupAddress = false, fitWithOrigin = false } = opts;
       const m = mapRef.current;
       const mk = markerRef.current;
       if (!m || !mk) return;
       mk.setLatLng([lat, lng]);
       m.invalidateSize();
-      m.flyTo([lat, lng], 17, { duration: 0.75 });
+      if (fitWithOrigin && hasOrigin) {
+        m.fitBounds(
+          L.latLngBounds([
+            [originLat, originLng],
+            [lat, lng],
+          ]).pad(0.25)
+        );
+      } else {
+        m.flyTo([lat, lng], 17, { duration: 0.75 });
+      }
+      updateStoreCustomerLine();
       onChangeRef.current({ lat, lng });
       setGeoHint(null);
       if (!lookupAddress || !onAddressChangeRef.current) return;
@@ -177,29 +293,6 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
       );
     };
 
-    const tryAutoGeoIfAlreadyPermitted = () => {
-      if (hasSeedCoords || !navigator.geolocation) return;
-      const ok = (pos) => {
-        void applyGeoPosition(pos.coords.latitude, pos.coords.longitude);
-      };
-      const noop = () => {};
-      const tryQuery = async () => {
-        try {
-          const r = await navigator.permissions.query({ name: 'geolocation' });
-          if (r.state === 'granted') {
-            requestDevicePosition({ silent: true });
-          }
-        } catch {
-          navigator.geolocation.getCurrentPosition(ok, noop, {
-            enableHighAccuracy: false,
-            timeout: 4000,
-            maximumAge: 300_000,
-          });
-        }
-      };
-      void tryQuery();
-    };
-
     const layoutMap = () => {
       let shouldEmit = false;
       map.invalidateSize();
@@ -209,14 +302,16 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
           map.fitBounds(b.pad(0.1));
           if (savedLat != null && savedLng != null) {
             marker.setLatLng([savedLat, savedLng]);
+            shouldEmit = true;
           } else {
             marker.setLatLng(b.getCenter());
           }
-          shouldEmit = true;
         } else if (savedLat != null && savedLng != null) {
           marker.setLatLng([savedLat, savedLng]);
           map.setView([savedLat, savedLng], 16);
           shouldEmit = true;
+        } else if (hasOrigin) {
+          map.setView([originLat, originLng], 14);
         } else {
           map.setView([fallback[0], fallback[1]], 14);
         }
@@ -227,7 +322,8 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
           shouldEmit = true;
         }
       }
-      if (shouldEmit) emit();
+      updateStoreCustomerLine();
+      if (shouldEmit) emit({ fitWithOrigin: true });
     };
 
     map.whenReady(() => {
@@ -235,7 +331,6 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
         layoutMap();
         requestAnimationFrame(() => {
           layoutMap();
-          tryAutoGeoIfAlreadyPermitted();
         });
       });
     });
@@ -243,33 +338,63 @@ export function CheckoutDeliveryMap({ polygon, polygonZones, initialLat, initial
     mapRef.current = map;
 
     const runGeo = () => requestDevicePosition({ silent: false });
+    const runAddressSearch = async () => {
+      const query = String(addressQueryRef.current || '').trim();
+      if (!query) {
+        setGeoHint('Preencha rua, número, bairro ou CEP antes de buscar no mapa.');
+        return;
+      }
+      setGeoHint(null);
+      setSearchLoading(true);
+      try {
+        const hit = await searchAddress(query);
+        if (destroyed) return;
+        await applyGeoPosition(hit.lat, hit.lng, { fitWithOrigin: true });
+        if (onAddressChangeRef.current) onAddressChangeRef.current(hit.address);
+      } catch {
+        if (!destroyed) setGeoHint('Endereço não encontrado no mapa. Tente incluir bairro, cidade, UF ou CEP.');
+      } finally {
+        if (!destroyed) setSearchLoading(false);
+      }
+    };
 
     runGeoRef.current = runGeo;
+    runAddressSearchRef.current = runAddressSearch;
 
     return () => {
       destroyed = true;
       runGeoRef.current = () => {};
+      runAddressSearchRef.current = () => {};
       map.remove();
       mapRef.current = null;
       markerRef.current = null;
+      originMarkerRef.current = null;
+      routeLineRef.current = null;
     };
-  }, [polygon, polygonZones, initialLat, initialLng]);
+  }, [polygon, polygonZones, initialLat, initialLng, storeOriginLat, storeOriginLng, storeOriginLabel]);
 
   return (
     <div>
-      <div style={{ marginBottom: 10 }}>
+      <div className="checkout-map-actions" style={{ marginBottom: 10 }}>
+        <button
+          type="button"
+          className="btn btn-ghost"
+          disabled={searchLoading}
+          onClick={() => runAddressSearchRef.current()}
+        >
+          {searchLoading ? 'Buscando endereço…' : 'Buscar endereço no mapa'}
+        </button>
         <button
           type="button"
           className="btn btn-primary"
-          style={{ width: '100%', maxWidth: 360 }}
           disabled={geoLoading}
           onClick={() => runGeoRef.current()}
         >
           {geoLoading ? 'Obtendo localização…' : 'Usar localização atual do aparelho'}
         </button>
         <p className="muted" style={{ fontSize: '0.78rem', marginTop: 6, marginBottom: 0 }}>
-          Se você já permitiu antes neste site, tentamos posicionar o mapa sozinhos. Na primeira vez, o navegador
-          costuma pedir permissão após um clique no botão.
+          Para entregar em outro endereço, preencha os campos e toque em buscar. Use a localização do aparelho só se a
+          entrega for onde você está agora.
         </p>
       </div>
       {geoHint && (

@@ -107,6 +107,17 @@ export async function computeDeliveryFeeForStore(storeId, opts = {}) {
     return applyDayModifier(Number(polygonZone.fee), mod);
   }
 
+  let base = Number(config?.delivery_fee ?? 0);
+  const useZones = Boolean(config?.delivery_use_distance_zones) && zones.length > 0;
+
+  if (useZones) {
+    const zf = pickZoneFee(zones, distanceKm);
+    if (zf != null) base = zf;
+    const dow = at.getDay();
+    const mod = await deliveryRepo.getDayModifier(storeId, dow);
+    return applyDayModifier(base, mod);
+  }
+
   if (usePerKm) {
     const minTrip = Number(config?.delivery_min_trip_fee ?? 0);
     const rates = await deliveryRepo.listTimeRates(storeId);
@@ -116,14 +127,6 @@ export async function computeDeliveryFeeForStore(storeId, opts = {}) {
     const raw = d * perKmRate;
     const fee = roundMoney(Math.max(minTrip, raw));
     return fee;
-  }
-
-  let base = Number(config?.delivery_fee ?? 0);
-  const useZones = Boolean(config?.delivery_use_distance_zones) && zones.length > 0;
-
-  if (useZones) {
-    const zf = pickZoneFee(zones, distanceKm);
-    if (zf != null) base = zf;
   }
 
   const dow = at.getDay();

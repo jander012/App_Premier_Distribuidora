@@ -4,6 +4,7 @@ import { api, setClientToken, getClientToken } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore } from '../context/StoreContext.jsx';
 import { CheckoutDeliveryMap, isInsideAnyDeliveryPolygon } from '../components/CheckoutDeliveryMap.jsx';
+import { ageConfirmedPayload, readAgeGateDecision } from '../utils/ageGate.js';
 
 const PAYMENTS = [
   { code: 'pix_delivery', label: 'PIX na entrega' },
@@ -19,6 +20,12 @@ function checkoutPinStorageKey(storeSlug) {
 function mapsUrlFromPin(pin) {
   if (!pin || !Number.isFinite(pin.lat) || !Number.isFinite(pin.lng)) return '';
   return `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+}
+
+function formatKm(v) {
+  const n = Number(v);
+  if (!Number.isFinite(n)) return '';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 function applyIfPresent(setter, value) {
@@ -152,7 +159,15 @@ export function CheckoutPage() {
     Number.isFinite(deliveryPin.lng) &&
     !isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng);
   const taxaUsaRotaNoMapa =
-    Boolean(deliveryPublic?.deliveryPricingUsesRoute) && Boolean(hasDeliveryPolygon);
+    Boolean(deliveryPublic?.deliveryPricingUsesRoute);
+  const deliveryAddressQuery = useMemo(
+    () =>
+      [street && number ? `${street}, ${number}` : street, neighborhood, zipCode, 'Brasil']
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+        .join(', '),
+    [street, number, neighborhood, zipCode]
+  );
 
   useEffect(() => {
     if (deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng)) {
@@ -287,6 +302,7 @@ export function CheckoutPage() {
       const orderBody = {
         paymentMethodCode,
         paymentMeta,
+        ...ageConfirmedPayload(readAgeGateDecision(storeSlug)),
         customer: { fullName, cpf, email },
         address: {
           street,
@@ -365,6 +381,12 @@ export function CheckoutPage() {
               <span>Taxa de entrega</span>
               <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
             </div>
+            {summary.deliveryDistanceSource === 'route' && summary.deliveryDistanceKm != null && (
+              <div className="row-between">
+                <span>Rota loja → entrega</span>
+                <span>~{formatKm(summary.deliveryDistanceKm)} km</span>
+              </div>
+            )}
             {summary.deliveryRegion?.name && (
               <div className="row-between">
                 <span>Região de entrega</span>
@@ -485,19 +507,46 @@ export function CheckoutPage() {
           <div className="field" style={{ marginTop: '0.75rem' }}>
             <div className="section-label">Localização da entrega{hasDeliveryPolygon ? ' *' : ''}</div>
             <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0 }}>
-              Use a localização atual para enviar o ponto exato da entrega junto com o pedido. Ajuste o marcador se
-              precisar.
+              Busque o endereço preenchido para posicionar o ponto da entrega. Use a localização atual do aparelho
+              apenas quando a entrega for onde você está agora. A loja aparece no mapa para comparar origem e destino.
               {hasDeliveryPolygon ? ' Só aceitamos pedidos dentro da área destacada.' : ''}
             </p>
             <CheckoutDeliveryMap
-              key={`dm-${savedAddrLat ?? sessionPinLat ?? 'x'}-${savedAddrLng ?? sessionPinLng ?? 'y'}-${hasDeliveryPolygon ? 'poly' : 'free'}`}
+              key={`dm-${savedAddrLat ?? sessionPinLat ?? 'x'}-${savedAddrLng ?? sessionPinLng ?? 'y'}-${deliveryPublic?.deliveryOriginLat ?? 'olx'}-${deliveryPublic?.deliveryOriginLng ?? 'oly'}-${hasDeliveryPolygon ? 'poly' : 'free'}`}
               polygon={hasDeliveryPolygon ? deliveryPublic.deliveryAreaPolygon : null}
               polygonZones={hasDeliveryPolygon ? deliveryPublic.deliveryPolygonZones : null}
               initialLat={savedAddrLat ?? sessionPinLat}
               initialLng={savedAddrLng ?? sessionPinLng}
+              addressQuery={deliveryAddressQuery}
+              storeOriginLat={deliveryPublic?.deliveryOriginLat}
+              storeOriginLng={deliveryPublic?.deliveryOriginLng}
+              storeOriginLabel={deliveryPublic?.deliveryOriginAddress || deliveryPublic?.storeName || 'Loja'}
               onChange={setDeliveryPin}
               onAddressChange={fillAddressFromLocation}
             />
+            <div className="checkout-delivery-points">
+              {deliveryPublic?.deliveryOriginLat != null && deliveryPublic?.deliveryOriginLng != null && (
+                <div>
+                  <strong>Loja</strong>
+                  <span>{deliveryPublic?.deliveryOriginAddress || deliveryPublic?.storeName || 'Origem configurada'}</span>
+                </div>
+              )}
+              {deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng) && (
+                <div>
+                  <strong>Entrega</strong>
+                  <span>
+                    {street && number ? `${street}, ${number}` : street || 'Ponto marcado'}{' '}
+                    {neighborhood ? `- ${neighborhood}` : ''}
+                  </span>
+                </div>
+              )}
+              {summary?.deliveryDistanceSource === 'route' && summary?.deliveryDistanceKm != null && (
+                <div>
+                  <strong>Rota usada na taxa</strong>
+                  <span>~{formatKm(summary.deliveryDistanceKm)} km de carro</span>
+                </div>
+              )}
+            </div>
             {deliveryPin && Number.isFinite(deliveryPin.lat) && Number.isFinite(deliveryPin.lng) && (
               <div className="checkout-location-actions">
                 <a
@@ -526,7 +575,7 @@ export function CheckoutPage() {
           {taxaUsaRotaNoMapa && (
             <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0, marginBottom: 0 }}>
               A taxa por faixa de distância usa a <strong>rota de carro</strong> entre a origem da loja (marcada no
-              painel) e o pino de entrega no mapa acima — não o raio em linha reta.
+              painel) e o pino de entrega no mapa acima — não a sua localização atual nem o raio em linha reta.
             </p>
           )}
 

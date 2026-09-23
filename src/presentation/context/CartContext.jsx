@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { api, getCartToken, setCartAuth, clearCartAuth, CART_ID_KEY } from '../api/client.js';
 import { useStore, withStoreQuery } from './StoreContext.jsx';
+import { ageConfirmedPayload, readAgeGateDecision } from '../utils/ageGate.js';
 
 const PHONE_KEY = 'delivery_phone';
 
@@ -247,6 +248,7 @@ export function CartProvider({ children }) {
         quantity,
         note: note || undefined,
         optionIds: optionIds || [],
+        ...ageConfirmedPayload(readAgeGateDecision(storeSlug)),
       };
       try {
         await api.cartPost('/cart/items', body, { cartToken: token });
@@ -262,7 +264,7 @@ export function CartProvider({ children }) {
       }
       await refreshSummary();
     },
-    [ensureCartToken, refreshSummary]
+    [ensureCartToken, refreshSummary, storeSlug]
   );
 
   const updateItem = useCallback(

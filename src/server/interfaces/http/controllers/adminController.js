@@ -220,6 +220,7 @@ export async function createCategory(req, res, next) {
       name: req.body.name,
       sortOrder: req.body.sortOrder != null ? Number(req.body.sortOrder) : 0,
       active: req.body.active,
+      isAgeRestricted: Boolean(req.body.isAgeRestricted ?? req.body.is_age_restricted),
       storeId: req.storeId,
     });
     res.status(201).json(row);
@@ -240,6 +241,9 @@ export async function updateCategory(req, res, next) {
     }
     if (req.body.sortOrder !== undefined) patch.sortOrder = Number(req.body.sortOrder);
     if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
+    if (req.body.isAgeRestricted !== undefined || req.body.is_age_restricted !== undefined) {
+      patch.isAgeRestricted = Boolean(req.body.isAgeRestricted ?? req.body.is_age_restricted);
+    }
     const row = await menuRepo.adminUpdateCategory(id, req.storeId, patch);
     if (!row) return res.status(404).json({ error: 'Categoria não encontrada' });
     res.json(row);
