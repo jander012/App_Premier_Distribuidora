@@ -68,7 +68,15 @@ export async function requestAccessCode(email) {
   const expiresAt = new Date(Date.now() + env.adminOtpExpiresMinutes * 60 * 1000);
 
   await repo.createAdminLoginCode({ adminUserId: user.id, codeHash, expiresAt });
-  await sendAdminAccessCode({ to: user.email, name: user.name, code });
+  try {
+    await sendAdminAccessCode({ to: user.email, name: user.name, code });
+  } catch (e) {
+    console.error('Falha ao enviar código de acesso admin por SMTP:', e);
+    throw new AppError(
+      503,
+      'Não foi possível enviar o código por e-mail. Verifique as configurações SMTP ou use ADMIN_LOGIN_MODE=password para manter o login por senha.'
+    );
+  }
 
   return env.adminOtpDebugReturn ? { ok: true, code } : { ok: true };
 }

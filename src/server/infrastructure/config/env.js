@@ -52,6 +52,12 @@ function hasAdminEmailLoginConfig() {
   return Boolean(smtpHost && mailFrom);
 }
 
+function parseAdminLoginMode() {
+  const raw = String(process.env.ADMIN_LOGIN_MODE || 'auto').trim().toLowerCase();
+  if (raw === 'password' || raw === 'email_code' || raw === 'auto') return raw;
+  return 'auto';
+}
+
 export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
@@ -63,7 +69,13 @@ export const env = {
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',
   adminOtpExpiresMinutes: Number(process.env.ADMIN_OTP_EXPIRES_MINUTES) || 10,
   adminOtpDebugReturn: process.env.ADMIN_OTP_DEBUG_RETURN === 'true' || (process.env.NODE_ENV || 'development') === 'development',
-  adminEmailLoginEnabled: hasAdminEmailLoginConfig(),
+  adminLoginMode: parseAdminLoginMode(),
+  adminEmailLoginEnabled: (() => {
+    const mode = parseAdminLoginMode();
+    if (mode === 'password') return false;
+    if (mode === 'email_code') return true;
+    return hasAdminEmailLoginConfig();
+  })(),
   publicMenuUrl: process.env.PUBLIC_MENU_URL || 'http://localhost:3000',
   corsOrigins: parseCorsOrigins(),
   whatsappProvider: process.env.WHATSAPP_PROVIDER || 'stub',
@@ -99,6 +111,9 @@ export const env = {
   smtpUser: (process.env.SMTP_USER || '').trim(),
   smtpPassword: process.env.SMTP_PASSWORD || '',
   mailFrom: (process.env.MAIL_FROM || process.env.SMTP_USER || '').trim(),
+  smtpConnectionTimeoutMs: Number(process.env.SMTP_CONNECTION_TIMEOUT_MS) || 10000,
+  smtpGreetingTimeoutMs: Number(process.env.SMTP_GREETING_TIMEOUT_MS) || 10000,
+  smtpSocketTimeoutMs: Number(process.env.SMTP_SOCKET_TIMEOUT_MS) || 15000,
   /** Largura em caracteres (ex.: 48 para 80mm, 32 para 58mm). */
   thermalPrinterWidth: (() => {
     const n = Number(process.env.THERMAL_PRINTER_WIDTH);
