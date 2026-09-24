@@ -174,6 +174,26 @@ function queryToObject(searchParams) {
 
 async function readBody(request) {
   if (request.method === 'GET' || request.method === 'HEAD') return {};
+  const contentType = request.headers.get('content-type') || '';
+  if (contentType.toLowerCase().includes('multipart/form-data')) {
+    const form = await request.formData();
+    const out = {};
+    for (const [key, value] of form.entries()) {
+      let next = value;
+      if (value && typeof value === 'object' && typeof value.arrayBuffer === 'function') {
+        next = {
+          buffer: Buffer.from(await value.arrayBuffer()),
+          filename: value.name || 'arquivo',
+          mimeType: value.type || 'application/octet-stream',
+          size: value.size || 0,
+        };
+      }
+      if (out[key] === undefined) out[key] = next;
+      else if (Array.isArray(out[key])) out[key].push(next);
+      else out[key] = [out[key], next];
+    }
+    return out;
+  }
   const text = await request.text();
   if (!text) return {};
   try {

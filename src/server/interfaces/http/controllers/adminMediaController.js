@@ -1,5 +1,5 @@
 import * as mediaRepo from '../../../infrastructure/repositories/mediaRepository.js';
-import { ingestRemoteImage, removeStoredFileIfPresent } from '../../../application/services/mediaIngestService.js';
+import { ingestRemoteImage, ingestUploadedImage, removeStoredFileIfPresent } from '../../../application/services/mediaIngestService.js';
 
 export async function listMedia(req, res, next) {
   try {
@@ -15,6 +15,21 @@ export async function listMedia(req, res, next) {
 
 export async function createMedia(req, res, next) {
   try {
+    const upload = Array.isArray(req.body.file) ? req.body.file[0] : req.body.file;
+    if (upload?.buffer) {
+      const title = req.body.title || upload.filename || null;
+      const row = await ingestUploadedImage(upload, { storeId: req.storeId, title });
+      return res.status(201).json({
+        id: row.id,
+        publicUrl: row.public_url,
+        title: row.title,
+        contentHash: row.content_hash,
+        createdAt: row.created_at,
+        sourceUrl: row.source_url || null,
+        storedLocally: true,
+        storedInDatabase: Boolean(row.file_data),
+      });
+    }
     const publicUrl = req.body.publicUrl || req.body.public_url;
     if (!publicUrl || !String(publicUrl).trim()) {
       return res.status(400).json({ error: 'Informe publicUrl' });

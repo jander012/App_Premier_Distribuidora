@@ -223,6 +223,12 @@ a {
   gap: 0.75rem 1rem;
 }
 
+.admin-hero-month-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0 1rem;
+}
+
 .store-status-panel {
   display: grid;
   gap: 1rem;
@@ -1070,6 +1076,8 @@ body {
   background:
     linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%),
     url('https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1400&q=80') center/cover;
+  background-position: center;
+  background-size: cover;
   color: #fff;
   overflow: hidden;
 }

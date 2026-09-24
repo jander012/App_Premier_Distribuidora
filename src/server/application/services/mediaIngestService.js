@@ -39,6 +39,18 @@ function validateImageBuffer(contentType, buf) {
   return isImageMagic(buf);
 }
 
+export function validateUploadedImage(contentType, buf) {
+  if (!Buffer.isBuffer(buf) || buf.length === 0) {
+    throw new AppError(400, 'Arquivo de imagem vazio.');
+  }
+  if (buf.length > MAX_BYTES) {
+    throw new AppError(400, 'Imagem muito grande (máximo 8 MB).');
+  }
+  if (!validateImageBuffer(contentType, buf)) {
+    throw new AppError(400, 'O arquivo enviado não parece ser uma imagem válida.');
+  }
+}
+
 async function fetchRemoteImageBuffer(url) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), FETCH_MS);
@@ -150,4 +162,40 @@ export async function ingestRemoteImage(sourceUrl, opts = {}) {
     }
     throw e;
   }
+}
+
+/**
+ * Registra upload local guardando o binário no banco.
+ * @param {{ buffer: Buffer, filename?: string, mimeType?: string }} file
+ * @param {{ storeId?: number|null, title?: string|null }} opts
+ */
+export async function ingestUploadedImage(file, opts = {}) {
+  const buffer = file?.buffer;
+  const contentType = String(file?.mimeType || 'application/octet-stream').split(';')[0].trim();
+  validateUploadedImage(contentType, buffer);
+  const hash = crypto.createHash('sha256').update(buffer).digest('hex');
+
+  const existing = await mediaRepo.findByContentHash(hash);
+  if (existing) {
+    await mediaRepo.mergeMediaStoreAndTitle(hash, {
+      storeId: opts.storeId ?? null,
+      title: opts.title ?? null,
+      sourceUrl: file?.filename || null,
+    });
+    const row = await mediaRepo.findByContentHash(hash);
+    if (row) return row;
+  }
+
+  const id = crypto.randomUUID();
+  const publicUrl = `/api/media/files/${id}`;
+  return mediaRepo.insertUploadedMedia({
+    id,
+    contentHash: hash,
+    publicUrl,
+    storeId: opts.storeId ?? null,
+    title: opts.title ?? null,
+    fileData: buffer,
+    mimeType: contentType,
+    sourceUrl: file?.filename || null,
+  });
 }

@@ -5,6 +5,19 @@ import * as storeStatusRepo from '../../../infrastructure/repositories/storeStat
 import { AppError } from '../../../domain/shared/AppError.js';
 import { parseDeliveryPolygon } from '../../../domain/shared/geoUtils.js';
 
+function currentMonthKey() {
+  return String(new Date().getMonth() + 1).padStart(2, '0');
+}
+
+function resolveHeroImage(config) {
+  const monthly = config?.hero_monthly_images && typeof config.hero_monthly_images === 'object'
+    ? config.hero_monthly_images
+    : {};
+  const monthImage = String(monthly[currentMonthKey()] || '').trim();
+  const defaultImage = String(config?.hero_image_url || '').trim();
+  return monthImage || defaultImage || null;
+}
+
 export async function getPublicSettings(req, res, next) {
   try {
     const slug = String(req.query.storeSlug || 'principal').trim();
@@ -46,6 +59,8 @@ export async function getPublicSettings(req, res, next) {
       /** Distância de rota (OSRM) quando há origem + ponto de entrega; senão km informado. */
       deliveryPricingUsesRoute,
       menuBaseUrl: s?.menu_base_url || null,
+      heroImageUrl: resolveHeroImage(s),
+      heroDefaultImageUrl: s?.hero_image_url || null,
       storeSlug: store.slug,
       storeName: store.name,
       storeOpen: status.isOpen,

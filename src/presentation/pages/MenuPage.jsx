@@ -10,6 +10,8 @@ import { readAgeGateDecision, restrictedQueryParam, writeAgeGateDecision } from 
 const ALL_CATEGORIES = 'all';
 const PAGE_SIZE = 24;
 const DESTAQUE_FALLBACK_COUNT = 4;
+const HERO_OVERLAY =
+  'linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%)';
 
 function appendAgeParam(path, isAdult) {
   const join = path.includes('?') ? '&' : '?';
@@ -25,6 +27,14 @@ function buildProductsPath(storeSlug, filterCategoryId, page, q, isAdult) {
     params.set('categoryId', String(filterCategoryId));
   }
   return appendAgeParam(withStoreQuery(`/products?${params.toString()}`, storeSlug), isAdult);
+}
+
+function heroBackgroundStyle(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return undefined;
+  return {
+    backgroundImage: `${HERO_OVERLAY}, url("${raw.replace(/"/g, '%22')}")`,
+  };
 }
 
 export function MenuPage() {
@@ -237,6 +247,7 @@ export function MenuPage() {
 
   const loading = loadingCategories;
   const storeOpen = deliveryPublic?.storeOpen !== false;
+  const heroStyle = heroBackgroundStyle(deliveryPublic?.heroImageUrl);
 
   if (ageDecision === null) {
     return (
@@ -251,7 +262,7 @@ export function MenuPage() {
 
   return (
     <div className="menu-page">
-      <section className="menu-hero">
+      <section className="menu-hero" style={heroStyle}>
         <div>
           <span className="menu-hero__eyebrow">Delivery Premier</span>
           <h1 className="page-title">Cardápio</h1>

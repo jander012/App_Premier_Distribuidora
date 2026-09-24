@@ -111,6 +111,31 @@ export async function insertMirroredMedia(row) {
   return rows[0];
 }
 
+/**
+ * Registra mídia enviada por upload guardando o binário no MySQL.
+ * @param {{ id: string, contentHash: string, publicUrl: string, storeId?: number|null, title?: string|null, fileData: Buffer, mimeType: string, sourceUrl?: string|null }} row
+ */
+export async function insertUploadedMedia(row) {
+  const titleRaw = row.title != null ? String(row.title).trim() : '';
+  const titleVal = titleRaw.length ? titleRaw : null;
+  await query(
+    `INSERT INTO media_assets (id, content_hash, public_url, store_id, title, file_data, mime_type, source_url)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    [
+      row.id,
+      row.contentHash,
+      row.publicUrl,
+      row.storeId ?? null,
+      titleVal,
+      row.fileData,
+      row.mimeType,
+      row.sourceUrl ?? null,
+    ]
+  );
+  const { rows } = await query(`SELECT * FROM media_assets WHERE id = $1`, [row.id]);
+  return rows[0];
+}
+
 export async function listByStore(storeId, { page = 1, limit = 24, q } = {}) {
   const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 100);
   const safePage = Math.max(Number(page) || 1, 1);
@@ -131,7 +156,8 @@ export async function listByStore(storeId, { page = 1, limit = 24, q } = {}) {
   const total = countRows[0]?.n ?? 0;
 
   const { rows } = await query(
-    `SELECT id, public_url, title, content_hash, created_at, storage_path, source_url, mime_type
+    `SELECT id, public_url, title, content_hash, created_at, storage_path, source_url, mime_type,
+            file_data IS NOT NULL AS has_file_data
      FROM media_assets ${where}
      ORDER BY created_at DESC
      LIMIT ${safeLimit} OFFSET ${offset}`,

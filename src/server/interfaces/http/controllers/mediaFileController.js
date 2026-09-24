@@ -13,6 +13,12 @@ export async function serveMediaFile(req, res, next) {
     if (!row) {
       return res.status(404).send('Arquivo não encontrado');
     }
+    if (row.file_data) {
+      const mime = row.mime_type && String(row.mime_type).trim() ? String(row.mime_type).trim() : 'application/octet-stream';
+      res.setHeader('Content-Type', mime);
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      return res.send(row.file_data);
+    }
     const storagePath = row.storage_path && String(row.storage_path).trim();
     if (!storagePath) {
       const src = row.source_url && String(row.source_url).trim();

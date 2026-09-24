@@ -24,6 +24,8 @@ export async function updateStoreConfig(storeId, patch) {
     'delivery_origin_address',
     'delivery_area_polygon',
     'menu_base_url',
+    'hero_image_url',
+    'hero_monthly_images',
     'whatsapp_welcome_template',
     'whatsapp_order_confirm_template',
     'whatsapp_status_template',

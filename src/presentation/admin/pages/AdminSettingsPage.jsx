@@ -3,6 +3,21 @@ import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 
+const HERO_MONTHS = [
+  ['01', 'Janeiro'],
+  ['02', 'Fevereiro'],
+  ['03', 'Março'],
+  ['04', 'Abril'],
+  ['05', 'Maio'],
+  ['06', 'Junho'],
+  ['07', 'Julho'],
+  ['08', 'Agosto'],
+  ['09', 'Setembro'],
+  ['10', 'Outubro'],
+  ['11', 'Novembro'],
+  ['12', 'Dezembro'],
+];
+
 function getCurrentMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -27,6 +42,43 @@ function formatDuration(minutes) {
 
 function statusLabel(status) {
   return status === 'closed' ? 'Fechada' : 'Aberta';
+}
+
+function getHeroMonthlyImages(settings) {
+  const raw = settings?.hero_monthly_images;
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch {
+      return {};
+    }
+  }
+  return {};
+}
+
+async function uploadAdminImage(file, title) {
+  if (!file || file.size <= 0) return null;
+  const fd = new FormData();
+  fd.append('file', file);
+  if (title) fd.append('title', title);
+  const res = await fetch('/api/admin/media', {
+    method: 'POST',
+    headers: adminHeaders(),
+    body: fd,
+  });
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    data = text;
+  }
+  if (!res.ok) {
+    throw new Error(data?.error || data?.message || res.statusText || 'Falha ao enviar imagem');
+  }
+  return data?.publicUrl || null;
 }
 
 export function AdminSettingsPage() {
@@ -59,11 +111,22 @@ export function AdminSettingsPage() {
     e.preventDefault();
     const fd = new FormData(e.target);
     try {
+      const currentMonthlyImages = getHeroMonthlyImages(settings);
+      const heroMonthlyImages = { ...currentMonthlyImages };
+      const defaultHeroUpload = fd.get('hero_image_file');
+      const uploadedDefaultHero = await uploadAdminImage(defaultHeroUpload, 'Banner padrão do cardápio');
+      for (const [key] of HERO_MONTHS) {
+        const file = fd.get(`hero_month_file_${key}`);
+        const uploaded = await uploadAdminImage(file, `Banner do cardápio - mês ${key}`);
+        if (uploaded) heroMonthlyImages[key] = uploaded;
+      }
       await api.put(
         '/admin/settings',
         {
           delivery_fee: Number(fd.get('delivery_fee')),
           menu_base_url: fd.get('menu_base_url'),
+          hero_image_url: uploadedDefaultHero || settings.hero_image_url || null,
+          hero_monthly_images: heroMonthlyImages,
           whatsapp_welcome_template: fd.get('whatsapp_welcome_template'),
           whatsapp_order_confirm_template: fd.get('whatsapp_order_confirm_template'),
           whatsapp_status_template: fd.get('whatsapp_status_template'),
@@ -117,6 +180,7 @@ export function AdminSettingsPage() {
   const current = storeStatus?.current;
   const summary = storeStatus?.summary;
   const isOpen = current?.isOpen !== false;
+  const heroMonthlyImages = getHeroMonthlyImages(settings);
 
   return (
     <div>
@@ -248,6 +312,37 @@ export function AdminSettingsPage() {
         <div className="field">
           <label>URL base do cardápio (link WhatsApp)</label>
           <input name="menu_base_url" defaultValue={settings.menu_base_url || ''} />
+        </div>
+        <div className="section-label">Banner do cardápio</div>
+        <div className="field">
+          <label>Imagem padrão do banner</label>
+          <input
+            name="hero_image_file"
+            type="file"
+            accept="image/*"
+          />
+          {settings.hero_image_url && (
+            <span className="muted" style={{ wordBreak: 'break-all' }}>
+              Atual: {settings.hero_image_url}
+            </span>
+          )}
+        </div>
+        <div className="admin-hero-month-grid">
+          {HERO_MONTHS.map(([key, label]) => (
+            <div className="field" key={key}>
+              <label>{label}</label>
+              <input
+                name={`hero_month_file_${key}`}
+                type="file"
+                accept="image/*"
+              />
+              {heroMonthlyImages[key] && (
+                <span className="muted" style={{ wordBreak: 'break-all' }}>
+                  Atual: {heroMonthlyImages[key]}
+                </span>
+              )}
+            </div>
+          ))}
         </div>
         <div className="field">
           <label>Template saudação (opcional)</label>

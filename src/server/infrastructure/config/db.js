@@ -23,6 +23,7 @@ function normalizeParams(params = []) {
   return params.map((value) => {
     if (value === undefined) return null;
     if (value instanceof Date) return value;
+    if (Buffer.isBuffer(value)) return value;
     return Array.isArray(value) || (value && typeof value === 'object') ? JSON.stringify(value) : value;
   });
 }
@@ -48,6 +49,7 @@ const jsonFieldNames = new Set([
   'payload',
   'geojson',
   'delivery_area_polygon',
+  'hero_monthly_images',
   'default_address',
   'stores',
 ]);
