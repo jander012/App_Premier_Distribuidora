@@ -3,6 +3,25 @@ import * as mediaRepo from './mediaRepository.js';
 import { AppError } from '../../domain/shared/AppError.js';
 import { ingestRemoteImage } from '../../application/services/mediaIngestService.js';
 
+function escapeLike(value) {
+  return String(value).replace(/[\\%_]/g, (c) => `\\${c}`);
+}
+
+/**
+ * Quebra o texto de busca em tokens (palavras), para permitir correspondencia
+ * aproximada: "brahma 269" encontra "CERVEJA BRAHMA CHOPP 269ML".
+ */
+function tokenizeSearch(rawQuery) {
+  const base = String(rawQuery || '').trim().toLowerCase();
+  if (!base) return [];
+  const tokens = base
+    .split(/\s+/)
+    .map((t) => t.trim())
+    .filter((t) => t.length >= 2);
+  if (tokens.length) return [...new Set(tokens)];
+  return [base];
+}
+
 function localMediaFileIdFromUrl(url) {
   const s = String(url || '').trim();
   const id = '([0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})';
@@ -56,19 +75,52 @@ export async function listProductsPage(
   const safeLimit = Math.min(Math.max(Number(limit) || 24, 1), 48);
   const safePage = Math.max(Number(page) || 1, 1);
   const offset = (safePage - 1) * safeLimit;
-  const search = q && String(q).trim() ? `%${String(q).trim()}%` : null;
+
+  const rawQuery = q && String(q).trim() ? String(q).trim() : null;
+  const tokens = rawQuery ? tokenizeSearch(rawQuery) : [];
+  const isSearch = tokens.length > 0;
 
   const params = [storeId];
   let where = 'WHERE p.store_id = $1';
   if (availableOnly) where += ' AND p.available = true';
   if (!includeAgeRestricted) where += ' AND c.is_age_restricted = false';
-  if (categoryId && !search) {
+  if (categoryId && !isSearch) {
     params.push(categoryId);
     where += ` AND p.category_id = $${params.length}`;
   }
-  if (search) {
-    params.push(search);
-    where += ` AND (p.name LIKE $${params.length} OR COALESCE(p.description,'') LIKE $${params.length})`;
+
+  let relevanceSelect = '';
+  let orderBy = 'ORDER BY p.category_id, p.id';
+
+  if (isSearch) {
+    const tokenIdx = tokens.map((t) => {
+      params.push(`%${escapeLike(t)}%`);
+      return params.length;
+    });
+    // Quantos tokens aparecem no nome ou na descricao (cobertura da busca).
+    const matchedExpr = tokenIdx
+      .map((i) => `(CASE WHEN p.name LIKE $${i} OR COALESCE(p.description,'') LIKE $${i} THEN 1 ELSE 0 END)`)
+      .join(' + ');
+    // Quantos tokens aparecem no nome (peso maior para relevancia).
+    const nameMatchedExpr = tokenIdx
+      .map((i) => `(CASE WHEN p.name LIKE $${i} THEN 1 ELSE 0 END)`)
+      .join(' + ');
+
+    params.push(`%${escapeLike(rawQuery.toLowerCase())}%`);
+    const phraseIdx = params.length;
+    params.push(`${escapeLike(tokens[0])}%`);
+    const prefixIdx = params.length;
+
+    // "50% ou mais" dos tokens precisam casar para o item aparecer.
+    const threshold = Math.max(1, Math.ceil(tokens.length * 0.5));
+    where += ` AND (${matchedExpr}) >= ${threshold}`;
+
+    relevanceSelect = `, (${matchedExpr}) AS match_score, (${nameMatchedExpr}) AS name_match_score`;
+    orderBy =
+      `ORDER BY (CASE WHEN p.name LIKE $${phraseIdx} THEN 1 ELSE 0 END) DESC, ` +
+      `(${nameMatchedExpr}) DESC, (${matchedExpr}) DESC, ` +
+      `(CASE WHEN p.name LIKE $${prefixIdx} THEN 1 ELSE 0 END) DESC, ` +
+      `CHAR_LENGTH(p.name) ASC, p.name ASC`;
   }
 
   const { rows: countRows } = await query(
@@ -82,12 +134,12 @@ export async function listProductsPage(
   const { rows } = await query(
     `SELECT p.id, p.category_id, p.name, p.description, p.price, p.available, p.store_id,
             c.is_age_restricted,
-            COALESCE(m.public_url, p.image_url) AS image_url
+            COALESCE(m.public_url, p.image_url) AS image_url${relevanceSelect}
      FROM products p
      JOIN categories c ON c.id = p.category_id AND c.store_id = p.store_id
      LEFT JOIN media_assets m ON m.id = p.image_asset_id
      ${where}
-     ORDER BY p.category_id, p.id
+     ${orderBy}
      LIMIT ${safeLimit} OFFSET ${offset}`,
     params
   );
