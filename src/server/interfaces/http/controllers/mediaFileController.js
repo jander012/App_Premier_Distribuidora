@@ -19,29 +19,48 @@ export async function serveMediaFile(req, res, next) {
       res.setHeader('Cache-Control', 'public, max-age=86400');
       return res.send(row.file_data);
     }
-    const storagePath = row.storage_path && String(row.storage_path).trim();
-    if (!storagePath) {
+    // Fallback: quando nao ha arquivo local recuperavel (disco efemero em
+    // producao, por exemplo), redireciona para a URL de origem/externa.
+    const redirectToSource = () => {
       const src = row.source_url && String(row.source_url).trim();
       const pub = row.public_url && String(row.public_url).trim();
       if (/^https?:\/\//i.test(src)) {
-        return res.redirect(302, src);
+        res.redirect(302, src);
+        return true;
       }
       if (/^https?:\/\//i.test(pub) && !/\/api\/media\/files\//i.test(pub)) {
-        return res.redirect(302, pub);
+        res.redirect(302, pub);
+        return true;
       }
+      return false;
+    };
+    const storagePath = row.storage_path && String(row.storage_path).trim();
+    if (!storagePath) {
+      if (redirectToSource()) return;
       return res.status(404).send('Imagem sem arquivo local; cadastre de novo sem "só link" ou use URL https externa.');
     }
     const base = path.basename(String(storagePath));
     if (!base || base !== String(row.storage_path).trim()) {
+      if (redirectToSource()) return;
       return res.status(404).send('Arquivo não encontrado');
     }
     const root = env.mediaUploadDir;
     const full = path.join(root, base);
     const resolvedRoot = path.resolve(root);
     if (!full.startsWith(resolvedRoot + path.sep) && full !== resolvedRoot) {
+      if (redirectToSource()) return;
       return res.status(404).send('Arquivo não encontrado');
     }
-    const buf = await fs.readFile(full);
+    let buf;
+    try {
+      buf = await fs.readFile(full);
+    } catch (readErr) {
+      if (readErr && readErr.code === 'ENOENT') {
+        if (redirectToSource()) return;
+        return res.status(404).send('Arquivo não encontrado');
+      }
+      throw readErr;
+    }
     const mime = row.mime_type && String(row.mime_type).trim() ? String(row.mime_type).trim() : 'application/octet-stream';
     res.setHeader('Content-Type', mime);
     res.setHeader('Cache-Control', 'public, max-age=86400');

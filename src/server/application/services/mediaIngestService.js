@@ -130,28 +130,22 @@ export async function ingestRemoteImage(sourceUrl, opts = {}) {
   }
 
   const id = crypto.randomUUID();
-  const ext = extensionForMime(contentType);
-  const filename = `${id}${ext}`;
-  const root = uploadRoot();
-  await fs.mkdir(root, { recursive: true });
-  const fullPath = path.join(root, filename);
-  await fs.writeFile(fullPath, buffer);
-
   const publicUrl = `/api/media/files/${id}`;
+  // Guarda o binario no banco (file_data), e nao em disco, para sobreviver a
+  // deploys/ambientes com filesystem efemero (producao). Mantem source_url.
   try {
-    return await mediaRepo.insertMirroredMedia({
+    return await mediaRepo.insertUploadedMedia({
       id,
       contentHash: hash,
       publicUrl,
       storeId: opts.storeId ?? null,
       title: opts.title ?? null,
-      storagePath: filename,
+      fileData: buffer,
       mimeType: contentType,
       sourceUrl: url,
     });
   } catch (e) {
-    await fs.unlink(fullPath).catch(() => {});
-    if (e && e.code === '23505') {
+    if (e && (e.code === '23505' || e.code === 'ER_DUP_ENTRY')) {
       await mediaRepo.mergeMediaStoreAndTitle(hash, {
         storeId: opts.storeId ?? null,
         title: opts.title ?? null,
