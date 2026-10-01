@@ -41,15 +41,18 @@ export async function findById(id) {
 export async function findForMediaFileServe(pathUuid) {
   const u = String(pathUuid ?? '').trim();
   if (!u) return null;
-  const pathApi = `/api/media/files/${u.toLowerCase()}`;
-  const pathShort = `/media/files/${u.toLowerCase()}`;
+  // Evita REGEXP_REPLACE com argumentos de posição/ocorrência, que não é
+  // suportado pelo MariaDB (produção). LIKE funciona em MySQL e MariaDB.
+  const likeApi = `%/api/media/files/${u.toLowerCase()}`;
+  const likeShort = `%/media/files/${u.toLowerCase()}`;
   const { rows } = await query(
     `SELECT * FROM media_assets
      WHERE id = $1
-        OR lower(REGEXP_REPLACE(trim(public_url), '^https?://[^/]+', '', 1, 0, 'i')) IN ($2, $3)
+        OR lower(trim(public_url)) LIKE $2
+        OR lower(trim(public_url)) LIKE $3
      ORDER BY (storage_path IS NOT NULL AND trim(COALESCE(storage_path, '')) <> '') DESC, created_at DESC
      LIMIT 1`,
-    [u, pathApi, pathShort]
+    [u, likeApi, likeShort]
   );
   return rows[0] || null;
 }
