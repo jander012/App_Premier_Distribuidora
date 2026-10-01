@@ -3,6 +3,8 @@ dist/
 .next/
 backend/uploads/
 uploads/
+scripts/import-premier-local.mjs
+scripts/convert-product-images.mjs
 .bkp/
 .env
 *.log
