@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '../../navigation.js';
-import { api } from '../../api/client.js';
+import { api, apiBase } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 
 function excerpt(text, max = 100) {
@@ -15,6 +15,9 @@ export function AdminProductsListPage() {
   const [q, setQ] = useState('');
   const [qDebounced, setQDebounced] = useState('');
   const [err, setErr] = useState(null);
+  const fileRef = useRef(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 350);
@@ -46,6 +49,40 @@ export function AdminProductsListPage() {
     setPage(1);
   }, [qDebounced]);
 
+  async function handleImportFile(e) {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+    setImporting(true);
+    setImportResult(null);
+    setErr(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch(`${apiBase}/admin/products/import`, {
+        method: 'POST',
+        headers: adminHeaders(),
+        body: fd,
+      });
+      const text = await res.text();
+      let json = null;
+      try {
+        json = text ? JSON.parse(text) : null;
+      } catch {
+        json = null;
+      }
+      if (!res.ok) {
+        throw new Error(json?.error || res.statusText || 'Falha ao importar');
+      }
+      setImportResult(json);
+      await load();
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setImporting(false);
+    }
+  }
+
   const products = data.items;
 
   return (
@@ -56,11 +93,52 @@ export function AdminProductsListPage() {
           <Link to="/admin/painel/categorias" className="btn btn-ghost" style={{ width: 'auto', textAlign: 'center' }}>
             Categorias
           </Link>
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={handleImportFile}
+            style={{ display: 'none' }}
+          />
+          <button
+            type="button"
+            className="btn btn-ghost"
+            style={{ width: 'auto', textAlign: 'center' }}
+            disabled={importing}
+            onClick={() => fileRef.current?.click()}
+            title="Atualiza preço e nome pelo código único; cria o produto se não existir. Atualiza a imagem quando houver link."
+          >
+            {importing ? 'Importando…' : 'Importar/Atualizar (XLSX)'}
+          </button>
           <Link to="/admin/painel/produtos/novo" className="btn btn-primary" style={{ width: 'auto', textAlign: 'center' }}>
             Novo produto
           </Link>
         </div>
       </div>
+      {importResult && (
+        <div className="card" style={{ marginBottom: '0.75rem', padding: '0.75rem 1rem' }}>
+          <strong>Importação concluída</strong>
+          <p className="muted" style={{ margin: '0.35rem 0 0' }}>
+            {importResult.created} criado(s) · {importResult.updated} atualizado(s) ·{' '}
+            {importResult.imagesUpdated} imagem(ns) · {importResult.skipped} ignorado(s)
+            {importResult.errorCount > 0 ? ` · ${importResult.errorCount} erro(s)` : ''}
+          </p>
+          {importResult.errorCount > 0 && (
+            <details style={{ marginTop: '0.35rem' }}>
+              <summary className="muted" style={{ cursor: 'pointer' }}>
+                Ver erros ({importResult.errorCount})
+              </summary>
+              <ul className="muted" style={{ margin: '0.35rem 0 0', paddingLeft: '1.1rem', fontSize: '0.85rem' }}>
+                {(importResult.errors || []).map((er, i) => (
+                  <li key={i}>
+                    Linha {er.line}: {er.error}
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </div>
+      )}
       <div className="admin-toolbar" style={{ marginTop: '-0.25rem' }}>
         <input
           type="search"

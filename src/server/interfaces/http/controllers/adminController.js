@@ -7,6 +7,7 @@ import * as settingsRepo from '../../../infrastructure/repositories/settingsRepo
 import * as storeStatusRepo from '../../../infrastructure/repositories/storeStatusRepository.js';
 import * as orderService from '../../../application/services/orderService.js';
 import * as thermalReceiptService from '../../../application/services/thermalReceiptService.js';
+import * as productImport from '../../../application/services/productImportService.js';
 import { formatOrder, formatItem } from './orderController.js';
 
 export async function login(req, res, next) {
@@ -176,6 +177,30 @@ export async function updateProduct(req, res, next) {
     const p = await menuRepo.adminUpdateProduct(id, req.storeId, body);
     if (!p) return res.status(404).json({ error: 'Produto não encontrado' });
     res.json(p);
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function importProducts(req, res, next) {
+  try {
+    const upload = Array.isArray(req.body?.file) ? req.body.file[0] : req.body?.file;
+    let rows;
+    if (upload?.buffer) {
+      rows = productImport.parseProductsXlsx(upload.buffer);
+    } else if (Array.isArray(req.body?.products)) {
+      rows = productImport.normalizeRows(req.body.products);
+    } else if (Array.isArray(req.body?.rows)) {
+      rows = productImport.normalizeRows(req.body.rows);
+    } else {
+      return next(new AppError(400, 'Envie o arquivo XLSX (campo "file") ou uma lista de produtos.'));
+    }
+    if (!rows.length) {
+      return next(new AppError(400, 'Nenhum produto válido encontrado na planilha.'));
+    }
+    const updateImages = req.body?.updateImages !== 'false' && req.body?.updateImages !== false;
+    const summary = await productImport.upsertProducts(req.storeId, rows, { updateImages });
+    res.json(summary);
   } catch (e) {
     next(e);
   }

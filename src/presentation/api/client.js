@@ -14,6 +14,9 @@ function resolveApiBase() {
 
 const BASE = resolveApiBase();
 
+/** Base das rotas de API (ex.: "/api"). Util para uploads via FormData. */
+export const apiBase = BASE;
+
 export const CART_TOKEN_KEY = 'delivery_cart_token';
 export const CART_ID_KEY = 'delivery_cart_id';
 export const CLIENT_TOKEN_KEY = 'delivery_client_token';

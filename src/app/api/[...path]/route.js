@@ -98,6 +98,7 @@ const routes = [
   ['PUT', '/admin/drivers/:id', [...adminProtected, driverController.adminUpdateDriver]],
   ['GET', '/admin/delivery-runs', [...adminProtected, driverController.adminListRuns]],
   ['GET', '/admin/customers', [...adminProtected, adminController.listCustomers]],
+  ['POST', '/admin/products/import', [...adminProtected, adminController.importProducts]],
   ['POST', '/admin/products', [...adminProtected, adminController.createProduct]],
   ['PUT', '/admin/products/:id', [...adminProtected, adminController.updateProduct]],
   ['PATCH', '/admin/products/:id/availability', [...adminProtected, adminController.patchAvailability]],

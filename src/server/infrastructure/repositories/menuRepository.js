@@ -385,12 +385,14 @@ async function resolveImageAsset(imageUrl, storeId) {
 
 export async function adminCreateProduct(data) {
   const { image_url, image_asset_id } = await resolveImageAsset(data.imageUrl, data.storeId);
+  const spedCode = data.spedCode != null && String(data.spedCode).trim() ? String(data.spedCode).trim() : null;
   const result = await query(
-    `INSERT INTO products (category_id, name, description, price, image_url, image_asset_id, available, store_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+    `INSERT INTO products (category_id, name, sped_code, description, price, image_url, image_asset_id, available, store_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
     [
       data.categoryId,
       data.name,
+      spedCode,
       data.description,
       data.price,
       image_url,
@@ -401,6 +403,30 @@ export async function adminCreateProduct(data) {
   );
   const { rows } = await query(`SELECT * FROM products WHERE id = $1`, [result.insertId]);
   return rows[0];
+}
+
+export async function findProductBySpedCode(storeId, code) {
+  const c = String(code || '').trim();
+  if (!c) return null;
+  const { rows } = await query(
+    `SELECT * FROM products WHERE store_id = $1 AND sped_code = $2 LIMIT 1`,
+    [storeId, c]
+  );
+  return rows[0] || null;
+}
+
+export async function findOrCreateCategoryByName(storeId, name, sortOrder = 99) {
+  const n = String(name || '').trim() || 'Outros';
+  const { rows } = await query(
+    `SELECT id FROM categories WHERE store_id = $1 AND name = $2 LIMIT 1`,
+    [storeId, n]
+  );
+  if (rows[0]) return rows[0].id;
+  const result = await query(
+    `INSERT INTO categories (name, sort_order, active, store_id) VALUES ($1, $2, true, $3)`,
+    [n, Number(sortOrder) || 99, storeId]
+  );
+  return result.insertId;
 }
 
 export async function adminUpdateProduct(id, storeId, data) {
