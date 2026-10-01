@@ -135,7 +135,14 @@ export function ProductPage() {
         <img
           src={product.image_url}
           alt=""
-          style={{ width: '100%', borderRadius: 16, marginTop: '0.75rem', maxHeight: 220, objectFit: 'cover' }}
+          style={{
+            width: '100%',
+            borderRadius: 16,
+            marginTop: '0.75rem',
+            height: 280,
+            objectFit: 'contain',
+            background: '#fff',
+          }}
         />
       )}
       <h1 className="page-title" style={{ marginBottom: '0.35rem' }}>
