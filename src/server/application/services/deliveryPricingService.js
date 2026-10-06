@@ -131,12 +131,26 @@ export async function computeDeliveryFeeForStore(storeId, opts = {}) {
 
   const dow = at.getDay();
   const mod = await deliveryRepo.getDayModifier(storeId, dow);
-  return applyDayModifier(base, mod);
+  return computeKmFee(base, distanceKm, mod);
 }
 
 /**
- * Resolve km para faixas: com origem da loja + destino, usa rota de condução (OSRM); caso contrário km manual.
- * @returns {{ distanceKm: number|null, source: 'route'|'manual'|'none' }}
+ * Taxa padrão = valor mínimo. Com a distância da rota conhecida:
+ * max(mínimo, km × R$/km do dia + R$ extra do dia).
+ * Sem distância (ou sem configuração do dia), cobra o mínimo.
+ */
+export function computeKmFee(minFee, distanceKm, modifierRow) {
+  const min = Number(minFee) || 0;
+  const km = numOrUndef(distanceKm);
+  if (km == null || km < 0 || !modifierRow) return roundMoney(min);
+  const perKm = Number(modifierRow.fee_multiplier ?? 0) || 0;
+  const extra = Number(modifierRow.fee_add ?? 0) || 0;
+  return roundMoney(Math.max(min, km * perKm + extra));
+}
+
+/**
+ * Com origem da loja + destino, usa a menor rota de carro (OSRM); caso contrário km manual.
+ * @returns {{ distanceKm: number|null, source: 'route'|'manual'|'none', route?: object }}
  */
 export async function resolveDeliveryDistanceKm(storeId, { manualKm = null, destLat = null, destLng = null } = {}) {
   if (!storeId) {
@@ -144,22 +158,23 @@ export async function resolveDeliveryDistanceKm(storeId, { manualKm = null, dest
   }
 
   const config = await settingsRepo.getStoreConfig(storeId);
-  const zones = await deliveryRepo.listZones(storeId);
-  const useZones = Boolean(config?.delivery_use_distance_zones) && zones.length > 0;
-  const usePerKm = Boolean(config?.delivery_use_per_km_pricing);
   const oLa = numOrUndef(config?.delivery_origin_lat);
   const oLn = numOrUndef(config?.delivery_origin_lng);
   const dLa = numOrUndef(destLat);
   const dLn = numOrUndef(destLng);
 
-  if ((useZones || usePerKm) && oLa != null && oLn != null && dLa != null && dLn != null) {
-    const { distanceKm } = await routingService.getDrivingRouteKm(oLa, oLn, dLa, dLn);
-    return { distanceKm, source: 'route' };
+  if (oLa != null && oLn != null && dLa != null && dLn != null) {
+    const route = await routingService.getShortestDrivingRoute(oLa, oLn, dLa, dLn);
+    return { distanceKm: route.distanceKm, source: 'route', route };
   }
 
   const m = normalizeManualKm(manualKm);
   if (m != null) return { distanceKm: m, source: 'manual' };
   return { distanceKm: null, source: 'none' };
+}
+
+export function storeHasDeliveryOrigin(config) {
+  return numOrUndef(config?.delivery_origin_lat) != null && numOrUndef(config?.delivery_origin_lng) != null;
 }
 
 function normalizeManualKm(raw) {
@@ -173,6 +188,14 @@ function normalizeManualKm(raw) {
 export async function assertDeliveryDistanceResolvedIfRequired(storeId, resolved) {
   if (!storeId) return;
   const config = await settingsRepo.getStoreConfig(storeId);
+  const hasOrigin = storeHasDeliveryOrigin(config);
+  if (hasOrigin) {
+    if (resolved.source !== 'route' || resolved.distanceKm == null || !Number.isFinite(resolved.distanceKm)) {
+      throw new AppError(400, 'Marque no mapa o local exato da entrega para calcular a rota e a taxa.');
+    }
+    return;
+  }
+
   const zones = await deliveryRepo.listZones(storeId);
   const useZones = Boolean(config?.delivery_use_distance_zones) && zones.length > 0;
   const usePerKm = Boolean(config?.delivery_use_per_km_pricing);
@@ -181,12 +204,9 @@ export async function assertDeliveryDistanceResolvedIfRequired(storeId, resolved
   if (!need) return;
 
   if (resolved.distanceKm == null || !Number.isFinite(resolved.distanceKm)) {
-    const hasOrigin = numOrUndef(config?.delivery_origin_lat) != null && numOrUndef(config?.delivery_origin_lng) != null;
     throw new AppError(
       400,
-      hasOrigin
-        ? 'Marque no mapa o ponto de entrega para calcular a rota e a taxa.'
-        : 'Informe a distância de entrega (km) para calcular a taxa ou configure a origem da loja no painel.'
+      'Informe a distância de entrega (km) para calcular a taxa ou configure a origem da loja no painel.'
     );
   }
 }

@@ -1,14 +1,13 @@
 -- Initial seed data moved from scripts/seed.js.
 
-INSERT INTO admin_users (email, password_hash, is_super_admin)
+-- Migrations run on every build: only create the bootstrap admin when absent, never reset
+-- its password or privileges afterwards.
+INSERT IGNORE INTO admin_users (email, password_hash, is_super_admin)
 VALUES (
   'admin@delivery.local',
   '$2a$10$B81uaDQlFd4Q3IxYNFFTwuuJgrzSVzYamafLJ/i.s5eu0uOz2bOT6',
   true
-)
-ON DUPLICATE KEY UPDATE
-  password_hash = VALUES(password_hash),
-  is_super_admin = true;
+);
 
 SET @admin_id := (
   SELECT id

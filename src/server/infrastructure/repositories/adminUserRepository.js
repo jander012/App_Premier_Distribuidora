@@ -139,10 +139,21 @@ export async function findLatestActiveAdminLoginCode(adminUserId) {
   return rows[0] || null;
 }
 
-export async function incrementAdminLoginCodeAttempts(id) {
-  await query(`UPDATE admin_login_codes SET attempts = attempts + 1 WHERE id = $1`, [id]);
+/** Atomically reserves one verification attempt; false when the cap was already reached. */
+export async function claimAdminLoginCodeAttempt(id, maxAttempts) {
+  const { rowCount } = await query(
+    `UPDATE admin_login_codes SET attempts = attempts + 1
+     WHERE id = $1 AND attempts < $2 AND consumed_at IS NULL`,
+    [id, maxAttempts]
+  );
+  return rowCount > 0;
 }
 
+/** Single-use: false when another request consumed the code first. */
 export async function consumeAdminLoginCode(id) {
-  await query(`UPDATE admin_login_codes SET consumed_at = CURRENT_TIMESTAMP WHERE id = $1`, [id]);
+  const { rowCount } = await query(
+    `UPDATE admin_login_codes SET consumed_at = CURRENT_TIMESTAMP WHERE id = $1 AND consumed_at IS NULL`,
+    [id]
+  );
+  return rowCount > 0;
 }

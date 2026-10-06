@@ -65,7 +65,11 @@ try {
           await connection.query(statement);
           continue;
         }
-        if (e?.code === 'ER_DUP_FIELDNAME' || e?.code === 'ER_DUP_KEYNAME') {
+        if (
+          e?.code === 'ER_DUP_FIELDNAME' ||
+          e?.code === 'ER_DUP_KEYNAME' ||
+          e?.code === 'ER_CHECK_CONSTRAINT_DUP_NAME'
+        ) {
           continue;
         }
         throw e;

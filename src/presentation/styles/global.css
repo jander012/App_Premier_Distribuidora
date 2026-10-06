@@ -1936,14 +1936,15 @@ body {
 }
 
 .checkout-map-icon {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  align-items: flex-start;
   justify-content: center;
   background: transparent;
   border: 0;
 }
 
 .checkout-map-icon span {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1958,12 +1959,46 @@ body {
   box-shadow: 0 6px 16px rgba(23, 23, 23, 0.24);
 }
 
+.checkout-map-icon span::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: -8px;
+  transform: translateX(-50%);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-top: 8px solid currentColor;
+  color: inherit;
+}
+
 .checkout-map-icon--store span {
   background: #171717;
 }
 
+.checkout-map-icon--store span::after {
+  border-top-color: #171717;
+}
+
 .checkout-map-icon--customer span {
   background: #f97316;
+}
+
+.checkout-map-icon--customer span::after {
+  border-top-color: #f97316;
+}
+
+.checkout-route-badge {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.75rem;
+  margin-bottom: 8px;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
+  color: #1e3a8a;
+  font-size: 0.85rem;
 }
 
 .checkout-delivery-points {

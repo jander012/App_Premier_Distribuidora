@@ -18,18 +18,19 @@ L.Icon.Default.mergeOptions({
 });
 
 const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 60_000 };
+const MAX_SEED_DISTANCE_M = 150_000;
 const STORE_ICON = L.divIcon({
   className: 'checkout-map-icon checkout-map-icon--store',
   html: '<span>Loja</span>',
-  iconSize: [52, 24],
-  iconAnchor: [26, 24],
+  iconSize: [52, 32],
+  iconAnchor: [26, 32],
 });
 
 const CUSTOMER_ICON = L.divIcon({
   className: 'checkout-map-icon checkout-map-icon--customer',
   html: '<span>Entrega</span>',
-  iconSize: [70, 24],
-  iconAnchor: [35, 24],
+  iconSize: [70, 32],
+  iconAnchor: [35, 32],
 });
 
 function geoErrorMessage(code) {
@@ -77,24 +78,183 @@ async function reverseGeocode(lat, lng) {
   return normalizeReverseAddress(await res.json());
 }
 
-async function searchAddress(query) {
+async function nominatimSearch(query, { viewbox = null, limit = 5, geometry = false } = {}) {
   const url = new URL('https://nominatim.openstreetmap.org/search');
   url.searchParams.set('format', 'jsonv2');
   url.searchParams.set('addressdetails', '1');
-  url.searchParams.set('limit', '1');
+  url.searchParams.set('limit', String(limit));
   url.searchParams.set('countrycodes', 'br');
   url.searchParams.set('q', query);
   url.searchParams.set('accept-language', 'pt-BR,pt');
+  if (geometry) url.searchParams.set('polygon_geojson', '1');
+  if (viewbox) {
+    url.searchParams.set('viewbox', viewbox);
+    url.searchParams.set('bounded', '1');
+  }
   const res = await fetch(url.toString(), {
     headers: { Accept: 'application/json' },
   });
   if (!res.ok) throw new Error('geocode_failed');
   const rows = await res.json();
-  const hit = Array.isArray(rows) ? rows[0] : null;
-  const lat = Number(hit?.lat);
-  const lng = Number(hit?.lon);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) throw new Error('address_not_found');
-  return { lat, lng, address: normalizeSearchAddress(hit) };
+  return (Array.isArray(rows) ? rows : [])
+    .map((hit) => ({ lat: Number(hit?.lat), lng: Number(hit?.lon), hit }))
+    .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+}
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const cityCenterCache = new Map();
+
+async function cityCenter(city, state) {
+  const key = `${city}|${state}`;
+  if (cityCenterCache.has(key)) return cityCenterCache.get(key);
+  const url = new URL('https://nominatim.openstreetmap.org/search');
+  url.searchParams.set('format', 'jsonv2');
+  url.searchParams.set('limit', '1');
+  url.searchParams.set('countrycodes', 'br');
+  url.searchParams.set('city', city);
+  if (state) url.searchParams.set('state', state);
+  let center = null;
+  try {
+    const res = await fetch(url.toString(), { headers: { Accept: 'application/json' } });
+    const rows = res.ok ? await res.json() : [];
+    const lat = Number(rows?.[0]?.lat);
+    const lng = Number(rows?.[0]?.lon);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) center = L.latLng(lat, lng);
+  } catch {
+    center = null;
+  }
+  if (center) cityCenterCache.set(key, center);
+  return center;
+}
+
+/** Maior trecho da rua como lista de L.LatLng (GeoJSON vem em [lng, lat]). */
+function streetLine(geojson) {
+  if (geojson?.type === 'LineString') return geojson.coordinates.map(([lng, lat]) => L.latLng(lat, lng));
+  if (geojson?.type === 'MultiLineString') {
+    const parts = geojson.coordinates.map((c) => c.map(([lng, lat]) => L.latLng(lat, lng)));
+    return parts.sort((a, b) => lineLength(b) - lineLength(a))[0] || null;
+  }
+  return null;
+}
+
+function lineLength(pts) {
+  let total = 0;
+  for (let i = 1; i < pts.length; i += 1) total += pts[i - 1].distanceTo(pts[i]);
+  return total;
+}
+
+function pointAlong(pts, meters) {
+  let acc = 0;
+  for (let i = 1; i < pts.length; i += 1) {
+    const seg = pts[i - 1].distanceTo(pts[i]);
+    if (acc + seg >= meters) {
+      const t = seg > 0 ? (meters - acc) / seg : 0;
+      return L.latLng(
+        pts[i - 1].lat + (pts[i].lat - pts[i - 1].lat) * t,
+        pts[i - 1].lng + (pts[i].lng - pts[i - 1].lng) * t
+      );
+    }
+    acc += seg;
+  }
+  return pts[pts.length - 1];
+}
+
+/**
+ * O OSM raramente tem número de casa. Muitas cidades usam numeração métrica (nº ≈ metros desde o
+ * início da rua, que costuma ser a ponta mais próxima do centro). Estima o ponto na rua por isso.
+ */
+async function estimateByHouseNumber(result, number, fallbackCenter = null) {
+  const n = Number(String(number || '').replace(/\D/g, ''));
+  const pts = streetLine(result?.hit?.geojson);
+  if (!Number.isFinite(n) || n <= 0 || !pts || pts.length < 2) return null;
+  const length = lineLength(pts);
+  if (n > length * 1.15) return null;
+  const addr = result.hit.address || {};
+  const city = addr.city || addr.town || addr.municipality;
+  let center = null;
+  if (city) {
+    if (!cityCenterCache.has(`${city}|${addr.state}`)) await sleep(1100);
+    center = await cityCenter(city, addr.state);
+  }
+  if (!center && fallbackCenter) center = L.latLng(fallbackCenter);
+  if (!center) return null;
+  const startsAtFirst = pts[0].distanceTo(center) <= pts[pts.length - 1].distanceTo(center);
+  const ordered = startsAtFirst ? pts : [...pts].reverse();
+  const p = pointAlong(ordered, Math.min(n, length));
+  return { lat: p.lat, lng: p.lng };
+}
+
+function clean(v) {
+  return String(v ?? '').replace(/\s+/g, ' ').trim();
+}
+
+/** Consultas do mais completo ao mais simples; o OSM muitas vezes não tem o número da casa. */
+function buildAddressQueries({ street, number, neighborhood, zipCode }) {
+  const s = clean(street);
+  const n = clean(number);
+  const b = clean(neighborhood);
+  const z = clean(zipCode).replace(/\D/g, '');
+  const out = [];
+  const add = (q, exact) => {
+    if (q && !out.some((o) => o.q === q)) out.push({ q, exact });
+  };
+  if (s && n && b) add(`${s} ${n}, ${b}`, true);
+  if (s && n) add(`${s} ${n}`, true);
+  if (s && b) add(`${s}, ${b}`, false);
+  if (s) add(s, false);
+  if (z.length === 8) add(`${z.slice(0, 5)}-${z.slice(5)}`, false);
+  if (b) add(b, false);
+  return out;
+}
+
+/**
+ * Busca o endereço priorizando a área atendida pela loja:
+ * 1) dentro do retângulo da área (viewbox bounded), preferindo pontos dentro do polígono;
+ * 2) sem limite, aceitando só resultados perto da área.
+ */
+async function searchAddress(parts, area) {
+  const queries = buildAddressQueries(parts);
+  if (!queries.length) throw new Error('address_empty');
+  const inside = (r) => !area.polygons.length || area.polygons.some((p) => pointInPolygonRing(r.lng, r.lat, p.coordinates[0]));
+  const isApprox = (r, exact) => !exact || !r?.hit?.address?.house_number;
+  let first = true;
+  const throttle = async () => {
+    if (!first) await sleep(1100);
+    first = false;
+  };
+
+  const finalize = async (r, exact, extra = {}) => {
+    const out = { ...r, address: normalizeSearchAddress(r.hit), approximate: isApprox(r, exact), ...extra };
+    if (out.approximate && r.hit?.category === 'highway' && parts.number) {
+      const est = await estimateByHouseNumber(r, parts.number, area.center);
+      if (est && inside(est)) return { ...out, lat: est.lat, lng: est.lng, estimated: true };
+    }
+    return out;
+  };
+
+  if (area.viewbox) {
+    let bboxFallback = null;
+    for (const { q, exact } of queries) {
+      await throttle();
+      const rows = await nominatimSearch(q, { viewbox: area.viewbox, geometry: true });
+      const hit = rows.find(inside);
+      if (hit) return finalize(hit, exact);
+      if (!bboxFallback && rows[0]) bboxFallback = { row: rows[0], exact };
+    }
+    if (bboxFallback) {
+      return finalize(bboxFallback.row, bboxFallback.exact, { outside: true });
+    }
+  }
+
+  await throttle();
+  const rows = await nominatimSearch(queries[0].q, { limit: 10, geometry: true });
+  const near = area.center
+    ? rows.filter((r) => L.latLng(area.center).distanceTo([r.lat, r.lng]) <= MAX_SEED_DISTANCE_M)
+    : rows;
+  const hit = near.find(inside) || near[0];
+  if (!hit) throw new Error('address_not_found');
+  return finalize(hit, queries[0].exact);
 }
 
 /**
@@ -103,10 +263,11 @@ async function searchAddress(query) {
  *   polygonZones?: Array<{ geojson: object|null }>|null,
  *   initialLat?: number|null,
  *   initialLng?: number|null,
- *   addressQuery?: string,
+ *   addressParts?: { street?: string, number?: string, neighborhood?: string, zipCode?: string },
  *   storeOriginLat?: number|null,
  *   storeOriginLng?: number|null,
  *   storeOriginLabel?: string,
+ *   route?: { geometry: Array<[number, number]>, distanceKm: number, durationMinutes: number }|null,
  *   onChange: (v: {lat:number,lng:number}) => void,
  *   onAddressChange?: (v: object) => void,
  * }} props
@@ -116,10 +277,11 @@ export function CheckoutDeliveryMap({
   polygonZones,
   initialLat,
   initialLng,
-  addressQuery,
+  addressParts,
   storeOriginLat,
   storeOriginLng,
   storeOriginLabel,
+  route,
   onChange,
   onAddressChange,
 }) {
@@ -130,14 +292,15 @@ export function CheckoutDeliveryMap({
   const routeLineRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const onAddressChangeRef = useRef(onAddressChange);
-  const addressQueryRef = useRef(addressQuery);
+  const addressPartsRef = useRef(addressParts);
   onChangeRef.current = onChange;
   onAddressChangeRef.current = onAddressChange;
-  addressQueryRef.current = addressQuery;
+  addressPartsRef.current = addressParts;
 
   const [geoHint, setGeoHint] = useState(null);
   const [geoLoading, setGeoLoading] = useState(false);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [mapGen, setMapGen] = useState(0);
   const runGeoRef = useRef(() => {});
   const runAddressSearchRef = useRef(() => {});
 
@@ -152,10 +315,15 @@ export function CheckoutDeliveryMap({
     const fallback = ring?.length ? ringBBoxCenterLatLng(ring) : [-15.78, -47.93];
     const savedLat = Number.isFinite(Number(initialLat)) ? Number(initialLat) : null;
     const savedLng = Number.isFinite(Number(initialLng)) ? Number(initialLng) : null;
-    const hasSeedCoords = savedLat != null && savedLng != null;
     const originLat = Number.isFinite(Number(storeOriginLat)) ? Number(storeOriginLat) : null;
     const originLng = Number.isFinite(Number(storeOriginLng)) ? Number(storeOriginLng) : null;
     const hasOrigin = originLat != null && originLng != null;
+    // Ponto salvo (cadastro/sessão) só vale se for plausível: dentro da área e perto da loja.
+    const hasSeedCoords =
+      savedLat != null &&
+      savedLng != null &&
+      (!hasPolygon || polygons.some((p) => pointInPolygonRing(savedLng, savedLat, p.coordinates[0]))) &&
+      (!hasOrigin || L.latLng(originLat, originLng).distanceTo([savedLat, savedLng]) <= MAX_SEED_DISTANCE_M);
     const startCenter = hasSeedCoords
       ? [savedLat, savedLng]
       : hasOrigin
@@ -183,39 +351,29 @@ export function CheckoutDeliveryMap({
         }).addTo(map)
       : null;
 
-    const marker = L.marker(startCenter, { draggable: true, icon: CUSTOMER_ICON }).addTo(map);
+    // O pino de entrega só entra no mapa quando há um ponto real (salvo, buscado, GPS ou clique);
+    // antes disso ele não pode "nascer" em cima da loja.
+    const marker = L.marker(startCenter, { draggable: true, icon: CUSTOMER_ICON, zIndexOffset: 1000 });
+    if (hasSeedCoords) marker.addTo(map);
     markerRef.current = marker;
-    marker.bindTooltip('Ponto de entrega', { direction: 'top', offset: [0, -22] });
+    marker.bindTooltip('Ponto de entrega', { direction: 'top', offset: [0, -30] });
+    const ensureMarkerOnMap = () => {
+      if (!map.hasLayer(marker)) marker.addTo(map);
+    };
 
     if (hasOrigin) {
       const originMarker = L.marker([originLat, originLng], { icon: STORE_ICON, interactive: false }).addTo(map);
-      originMarker.bindTooltip(storeOriginLabel || 'Origem da loja', { direction: 'top', offset: [0, -20] });
+      // Leaflet renders string content as HTML; the label is store-admin data, so pass a text node.
+      originMarker.bindTooltip(document.createTextNode(storeOriginLabel || 'Origem da loja'), {
+        direction: 'top',
+        offset: [0, -28],
+      });
       originMarkerRef.current = originMarker;
     }
-
-    const updateStoreCustomerLine = () => {
-      if (!hasOrigin) return;
-      const ll = marker.getLatLng();
-      const points = [
-        [originLat, originLng],
-        [ll.lat, ll.lng],
-      ];
-      if (routeLineRef.current) {
-        routeLineRef.current.setLatLngs(points);
-      } else {
-        routeLineRef.current = L.polyline(points, {
-          color: '#171717',
-          weight: 3,
-          opacity: 0.7,
-          dashArray: '6 7',
-        }).addTo(map);
-      }
-    };
 
     const emit = (opts = {}) => {
       const ll = marker.getLatLng();
       const loc = { lat: ll.lat, lng: ll.lng };
-      updateStoreCustomerLine();
       onChangeRef.current(loc);
       if (opts.fitWithOrigin && hasOrigin) {
         map.fitBounds(
@@ -226,9 +384,10 @@ export function CheckoutDeliveryMap({
         );
       }
     };
-    marker.on('dragend', emit);
+    marker.on('dragend', () => emit());
     map.on('click', (ev) => {
       marker.setLatLng(ev.latlng);
+      ensureMarkerOnMap();
       emit();
       setGeoHint(null);
     });
@@ -239,8 +398,9 @@ export function CheckoutDeliveryMap({
       const mk = markerRef.current;
       if (!m || !mk) return;
       mk.setLatLng([lat, lng]);
+      ensureMarkerOnMap();
       m.invalidateSize();
-      if (fitWithOrigin && hasOrigin) {
+      if ((fitWithOrigin || lookupAddress) && hasOrigin) {
         m.fitBounds(
           L.latLngBounds([
             [originLat, originLng],
@@ -250,7 +410,6 @@ export function CheckoutDeliveryMap({
       } else {
         m.flyTo([lat, lng], 17, { duration: 0.75 });
       }
-      updateStoreCustomerLine();
       onChangeRef.current({ lat, lng });
       setGeoHint(null);
       if (!lookupAddress || !onAddressChangeRef.current) return;
@@ -294,65 +453,98 @@ export function CheckoutDeliveryMap({
     };
 
     const layoutMap = () => {
+      if (destroyed) return;
       let shouldEmit = false;
       map.invalidateSize();
       try {
-        if (polyLayer) {
-          const b = polyLayer.getBounds();
-          map.fitBounds(b.pad(0.1));
-          if (savedLat != null && savedLng != null) {
-            marker.setLatLng([savedLat, savedLng]);
-            shouldEmit = true;
-          } else {
-            marker.setLatLng(b.getCenter());
-          }
-        } else if (savedLat != null && savedLng != null) {
+        if (hasSeedCoords) {
           marker.setLatLng([savedLat, savedLng]);
-          map.setView([savedLat, savedLng], 16);
+          ensureMarkerOnMap();
           shouldEmit = true;
-        } else if (hasOrigin) {
-          map.setView([originLat, originLng], 14);
+          if (!hasOrigin) map.setView([savedLat, savedLng], 16);
         } else {
-          map.setView([fallback[0], fallback[1]], 14);
+          let bounds = polyLayer ? polyLayer.getBounds() : null;
+          if (hasOrigin) {
+            bounds = bounds ? bounds.extend([originLat, originLng]) : null;
+          }
+          if (bounds?.isValid()) {
+            map.fitBounds(bounds.pad(0.1));
+          } else if (hasOrigin) {
+            map.setView([originLat, originLng], 14);
+          } else {
+            map.setView([fallback[0], fallback[1]], 14);
+          }
         }
       } catch {
-        map.setView([fallback[0], fallback[1]], 14);
-        if (savedLat != null && savedLng != null) {
+        try {
+          map.setView([fallback[0], fallback[1]], 14);
+        } catch {
+          return;
+        }
+        if (hasSeedCoords) {
           marker.setLatLng([savedLat, savedLng]);
+          ensureMarkerOnMap();
           shouldEmit = true;
         }
       }
-      updateStoreCustomerLine();
       if (shouldEmit) emit({ fitWithOrigin: true });
     };
 
+    const rafIds = [];
     map.whenReady(() => {
-      requestAnimationFrame(() => {
-        layoutMap();
+      rafIds.push(
         requestAnimationFrame(() => {
           layoutMap();
-        });
-      });
+          rafIds.push(requestAnimationFrame(layoutMap));
+        })
+      );
     });
 
     mapRef.current = map;
+    setMapGen((g) => g + 1);
 
     const runGeo = () => requestDevicePosition({ silent: false });
+
+    let searchArea = { polygons, viewbox: null, center: hasOrigin ? [originLat, originLng] : null };
+    if (polyLayer) {
+      const b = polyLayer.getBounds();
+      searchArea = {
+        polygons,
+        viewbox: `${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`,
+        center: hasOrigin ? [originLat, originLng] : [b.getCenter().lat, b.getCenter().lng],
+      };
+    } else if (hasOrigin) {
+      const d = 0.25;
+      searchArea.viewbox = `${originLng - d},${originLat + d},${originLng + d},${originLat - d}`;
+    }
+
     const runAddressSearch = async () => {
-      const query = String(addressQueryRef.current || '').trim();
-      if (!query) {
+      const parts = addressPartsRef.current || {};
+      const hasParts = ['street', 'neighborhood', 'zipCode'].some((k) => String(parts[k] || '').trim());
+      if (!hasParts) {
         setGeoHint('Preencha rua, número, bairro ou CEP antes de buscar no mapa.');
         return;
       }
       setGeoHint(null);
       setSearchLoading(true);
       try {
-        const hit = await searchAddress(query);
+        const hit = await searchAddress(parts, searchArea);
         if (destroyed) return;
         await applyGeoPosition(hit.lat, hit.lng, { fitWithOrigin: true });
-        if (onAddressChangeRef.current) onAddressChangeRef.current(hit.address);
+        if (destroyed) return;
+        if (hit.outside) {
+          setGeoHint('Encontramos o endereço, mas fora da área atendida pela loja. Confira os dados ou ajuste o pino.');
+        } else if (hit.estimated) {
+          setGeoHint('Posição estimada pelo número na rua. Confira no mapa e arraste o pino se não for exatamente aí.');
+        } else if (hit.approximate) {
+          setGeoHint('Localizamos a rua/região, mas não o número exato. Arraste o pino ou toque no mapa no local da entrega.');
+        }
       } catch {
-        if (!destroyed) setGeoHint('Endereço não encontrado no mapa. Tente incluir bairro, cidade, UF ou CEP.');
+        if (!destroyed) {
+          setGeoHint(
+            'Endereço não encontrado na área atendida. Confira rua e bairro, ou toque no mapa no local da entrega.'
+          );
+        }
       } finally {
         if (!destroyed) setSearchLoading(false);
       }
@@ -363,6 +555,7 @@ export function CheckoutDeliveryMap({
 
     return () => {
       destroyed = true;
+      rafIds.forEach((id) => cancelAnimationFrame(id));
       runGeoRef.current = () => {};
       runAddressSearchRef.current = () => {};
       map.remove();
@@ -372,6 +565,32 @@ export function CheckoutDeliveryMap({
       routeLineRef.current = null;
     };
   }, [polygon, polygonZones, initialLat, initialLng, storeOriginLat, storeOriginLng, storeOriginLabel]);
+
+  const routeGeometry = route?.geometry;
+  const routeGeometryRef = useRef(routeGeometry);
+  routeGeometryRef.current = routeGeometry;
+  const routeKey =
+    Array.isArray(routeGeometry) && routeGeometry.length >= 2
+      ? `${routeGeometry.length}:${routeGeometry[0].join(',')}:${routeGeometry[routeGeometry.length - 1].join(',')}`
+      : '';
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (routeLineRef.current) {
+      routeLineRef.current.remove();
+      routeLineRef.current = null;
+    }
+    const geometry = routeGeometryRef.current;
+    if (!routeKey || !Array.isArray(geometry)) return;
+    const line = L.polyline(geometry, {
+      color: '#2563eb',
+      weight: 5,
+      opacity: 0.85,
+      lineJoin: 'round',
+    }).addTo(map);
+    routeLineRef.current = line;
+    map.fitBounds(line.getBounds().pad(0.15));
+  }, [routeKey, mapGen]);
 
   return (
     <div>
@@ -401,6 +620,12 @@ export function CheckoutDeliveryMap({
         <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0, marginBottom: 8 }}>
           {geoHint}
         </p>
+      )}
+      {route?.distanceKm != null && (
+        <div className="checkout-route-badge">
+          <strong>Menor rota: {Number(route.distanceKm).toFixed(1).replace('.', ',')} km</strong>
+          {route.durationMinutes ? <span>~{route.durationMinutes} min de carro</span> : null}
+        </div>
       )}
       <div
         ref={wrapRef}

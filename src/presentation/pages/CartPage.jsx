@@ -119,7 +119,11 @@ export function CartPage() {
             </div>
             <div className="row-between">
               <span className="muted">Taxa de entrega</span>
-              <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
+              <span>
+                {summary.deliveryFeePending
+                  ? 'Calculada no checkout'
+                  : `R$ ${Number(summary.deliveryFee).toFixed(2)}`}
+              </span>
             </div>
             {summary.deliveryRegion?.name && (
               <div className="row-between">

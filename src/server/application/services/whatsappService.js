@@ -97,7 +97,11 @@ function withBrazilCountryCode(phoneDigits) {
 export async function sendVerificationCode(toPhoneDigits, code) {
   if (!env.whatsappOtpEndpoint || !env.whatsappOtpSiteKey) {
     // eslint-disable-next-line no-console
-    console.log('[WhatsApp OTP stub] to=%s code=%s', toPhoneDigits, code);
+    console.log(
+      '[WhatsApp OTP stub] to=%s code=%s',
+      toPhoneDigits,
+      env.nodeEnv === 'production' ? '(oculto)' : code
+    );
     return { ok: true, providerRef: `otp-stub-${Date.now()}`, raw: { skipped: true } };
   }
 

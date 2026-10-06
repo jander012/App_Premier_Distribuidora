@@ -33,6 +33,13 @@ function applyIfPresent(setter, value) {
   if (s) setter(s);
 }
 
+const LOCAL_DEV_PHONE = '66999990000';
+
+function isLocalhost() {
+  if (typeof window === 'undefined') return false;
+  return ['localhost', '127.0.0.1', '::1', '[::1]'].includes(window.location.hostname);
+}
+
 export function CheckoutPage() {
   const nav = useNavigate();
   const { storeSlug } = useStore();
@@ -125,7 +132,6 @@ export function CheckoutPage() {
       if (!Number.isFinite(la) || !Number.isFinite(ln)) return;
       setSessionPinLat(la);
       setSessionPinLng(ln);
-      setDeliveryPin((prev) => prev ?? { lat: la, lng: ln });
     } catch {
       /* ignore */
     }
@@ -160,12 +166,8 @@ export function CheckoutPage() {
     !isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng);
   const taxaUsaRotaNoMapa =
     Boolean(deliveryPublic?.deliveryPricingUsesRoute);
-  const deliveryAddressQuery = useMemo(
-    () =>
-      [street && number ? `${street}, ${number}` : street, neighborhood, zipCode, 'Brasil']
-        .map((x) => String(x || '').trim())
-        .filter(Boolean)
-        .join(', '),
+  const deliveryAddressParts = useMemo(
+    () => ({ street, number, neighborhood, zipCode }),
     [street, number, neighborhood, zipCode]
   );
 
@@ -178,8 +180,8 @@ export function CheckoutPage() {
       setDeliveryDest(deliveryPin);
       return;
     }
-    if (hasDeliveryPolygon) setDeliveryDest(null);
-  }, [deliveryPin, deliveryPolygons, hasDeliveryPolygon, setDeliveryDest]);
+    if (hasDeliveryPolygon || taxaUsaRotaNoMapa) setDeliveryDest(null);
+  }, [deliveryPin, deliveryPolygons, hasDeliveryPolygon, taxaUsaRotaNoMapa, setDeliveryDest]);
 
   useEffect(() => {
     setAppliedCoupon(null);
@@ -251,6 +253,31 @@ export function CheckoutPage() {
     }
   }
 
+  // Em localhost a confirmação do celular é automática; depende do backend devolver o código de teste
+  // (OTP_DEBUG_RETURN), o que nunca acontece em produção — lá o fluxo manual continua.
+  useEffect(() => {
+    if (sessionReady || !isLocalhost()) return undefined;
+    let on = true;
+    (async () => {
+      const devPhone = phone && phone.length >= 10 ? phone : LOCAL_DEV_PHONE;
+      try {
+        const req = await api.post('/auth/client/request-code', { phone: devPhone });
+        if (!on || !req?.debugCode) return;
+        const res = await api.post('/auth/client/verify-code', { phone: devPhone, code: req.debugCode });
+        if (!on) return;
+        if (devPhone !== phone) setPhone(devPhone);
+        setClientToken(res.clientToken);
+        setSessionReady(true);
+      } catch {
+        /* segue no fluxo manual */
+      }
+    })();
+    return () => {
+      on = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- tentativa única ao abrir o checkout
+  }, [sessionReady]);
+
   function fillAddressFromLocation(address) {
     applyIfPresent(setStreet, address?.street);
     applyIfPresent(setNumber, address?.number);
@@ -279,9 +306,9 @@ export function CheckoutPage() {
           }
         : {};
 
-    if (deliveryPolygons.length > 0) {
+    if (deliveryPolygons.length > 0 || taxaUsaRotaNoMapa) {
       if (!deliveryPin || !Number.isFinite(deliveryPin.lat) || !Number.isFinite(deliveryPin.lng)) {
-        setSubmitErr('Marque no mapa onde será a entrega.');
+        setSubmitErr('Marque no mapa o local exato da entrega para calcularmos a rota e a taxa.');
         return;
       }
       if (!isInsideAnyDeliveryPolygon(deliveryPolygons, deliveryPin.lat, deliveryPin.lng)) {
@@ -379,12 +406,16 @@ export function CheckoutPage() {
             </div>
             <div className="row-between">
               <span>Taxa de entrega</span>
-              <span>R$ {Number(summary.deliveryFee).toFixed(2)}</span>
+              <span>
+                {summary.deliveryFeePending
+                  ? 'Informe a localização'
+                  : `R$ ${Number(summary.deliveryFee).toFixed(2)}`}
+              </span>
             </div>
             {summary.deliveryDistanceSource === 'route' && summary.deliveryDistanceKm != null && (
               <div className="row-between">
-                <span>Rota loja → entrega</span>
-                <span>~{formatKm(summary.deliveryDistanceKm)} km</span>
+                <span>Menor rota loja → entrega</span>
+                <span>{formatKm(summary.deliveryDistanceKm)} km</span>
               </div>
             )}
             {summary.deliveryRegion?.name && (
@@ -517,10 +548,11 @@ export function CheckoutPage() {
               polygonZones={hasDeliveryPolygon ? deliveryPublic.deliveryPolygonZones : null}
               initialLat={savedAddrLat ?? sessionPinLat}
               initialLng={savedAddrLng ?? sessionPinLng}
-              addressQuery={deliveryAddressQuery}
+              addressParts={deliveryAddressParts}
               storeOriginLat={deliveryPublic?.deliveryOriginLat}
               storeOriginLng={deliveryPublic?.deliveryOriginLng}
               storeOriginLabel={deliveryPublic?.deliveryOriginAddress || deliveryPublic?.storeName || 'Loja'}
+              route={deliveryPin ? summary?.deliveryRoute : null}
               onChange={setDeliveryPin}
               onAddressChange={fillAddressFromLocation}
             />
@@ -542,8 +574,23 @@ export function CheckoutPage() {
               )}
               {summary?.deliveryDistanceSource === 'route' && summary?.deliveryDistanceKm != null && (
                 <div>
-                  <strong>Rota usada na taxa</strong>
-                  <span>~{formatKm(summary.deliveryDistanceKm)} km de carro</span>
+                  <strong>Menor rota</strong>
+                  <span>
+                    {formatKm(summary.deliveryDistanceKm)} km de carro
+                    {summary.deliveryRoute?.durationMinutes ? ` · ~${summary.deliveryRoute.durationMinutes} min` : ''}
+                  </span>
+                </div>
+              )}
+              {summary?.deliveryRouteError && (
+                <div>
+                  <strong>Rota</strong>
+                  <span className="err">{summary.deliveryRouteError}</span>
+                </div>
+              )}
+              {summary?.deliveryFeePending && !summary?.deliveryRouteError && (
+                <div>
+                  <strong>Taxa de entrega</strong>
+                  <span>Marque o local exato da entrega (buscar endereço, localização do aparelho ou toque no mapa).</span>
                 </div>
               )}
             </div>
@@ -574,8 +621,8 @@ export function CheckoutPage() {
 
           {taxaUsaRotaNoMapa && (
             <p className="muted" style={{ fontSize: '0.82rem', marginTop: 0, marginBottom: 0 }}>
-              A taxa por faixa de distância usa a <strong>rota de carro</strong> entre a origem da loja (marcada no
-              painel) e o pino de entrega no mapa acima — não a sua localização atual nem o raio em linha reta.
+              A taxa de entrega é calculada pela <strong>menor rota de carro</strong> entre a loja e o local marcado no
+              mapa acima.
             </p>
           )}
 

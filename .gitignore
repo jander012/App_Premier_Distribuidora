@@ -7,5 +7,9 @@ scripts/import-premier-local.mjs
 scripts/convert-product-images.mjs
 .bkp/
 .env
+.env.local
+.env.*.local
+*.pem
+*.key
 *.log
 .DS_Store

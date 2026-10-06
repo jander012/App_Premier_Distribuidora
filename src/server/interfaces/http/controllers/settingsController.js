@@ -27,15 +27,12 @@ export async function getPublicSettings(req, res, next) {
     const rawPoly = await deliveryRepo.getDeliveryPolygonForStore(store.id);
     const status = await storeStatusRepo.getCurrentStatus(store.id);
     const poly = parseDeliveryPolygon(rawPoly);
-    const zones = await deliveryRepo.listZones(store.id);
     const polygonZones = await deliveryRepo.listPolygonZones(store.id);
     const oLa = s?.delivery_origin_lat != null ? Number(s.delivery_origin_lat) : null;
     const oLn = s?.delivery_origin_lng != null ? Number(s.delivery_origin_lng) : null;
     const originOk = Number.isFinite(oLa) && Number.isFinite(oLn);
     const perKm = Boolean(s?.delivery_use_per_km_pricing);
-    const deliveryPricingUsesRoute =
-      originOk &&
-      ((Boolean(s?.delivery_use_distance_zones) && zones.length > 0) || perKm);
+    const deliveryPricingUsesRoute = originOk;
     res.json({
       deliveryFee: Number(s?.delivery_fee ?? 0),
       deliveryUseDistanceZones: Boolean(s?.delivery_use_distance_zones),

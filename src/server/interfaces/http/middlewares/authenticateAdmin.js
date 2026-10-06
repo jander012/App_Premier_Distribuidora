@@ -9,7 +9,10 @@ export function authenticateAdmin(req, res, next) {
   }
   const token = h.slice(7);
   try {
-    req.admin = jwt.verify(token, env.jwtSecret);
+    const payload = jwt.verify(token, env.jwtSecret, { algorithms: ['HS256'] });
+    // Tokens issued before `typ` existed have none; cart/client/driver tokens must never pass as admin.
+    if ((payload.typ != null && payload.typ !== 'admin') || payload.sub == null) throw new Error('invalid');
+    req.admin = payload;
     next();
   } catch {
     next(new AppError(401, 'Token inválido'));

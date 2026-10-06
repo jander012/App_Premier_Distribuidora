@@ -62,12 +62,28 @@ function parseBooleanEnv(value) {
   return ['1', 'true', 'yes', 'on'].includes(String(value || '').trim().toLowerCase());
 }
 
+const DEV_JWT_SECRET = 'dev-only-change-me';
+
+/** Lazy so `next build` (NODE_ENV=production, no secrets) does not fail; enforced on first token use. */
+function resolveJwtSecret() {
+  const secret = process.env.JWT_SECRET || '';
+  if ((process.env.NODE_ENV || 'development') === 'production') {
+    if (!secret || secret === DEV_JWT_SECRET || secret.length < 32) {
+      throw new Error('JWT_SECRET ausente ou fraco em produção (mínimo 32 caracteres, diferente do padrão).');
+    }
+    return secret;
+  }
+  return secret || DEV_JWT_SECRET;
+}
+
 export const env = {
   /** Padrão 4020 para evitar conflito com outros serviços na 4000/4010. */
   port: Number(process.env.PORT) || 4020,
   nodeEnv: process.env.NODE_ENV || 'development',
   database: parseDatabaseConfig(),
-  jwtSecret: process.env.JWT_SECRET || 'dev-only-change-me',
+  get jwtSecret() {
+    return resolveJwtSecret();
+  },
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '8h',
   clientJwtExpiresIn: process.env.CLIENT_JWT_EXPIRES_IN || '8h',
   cartJwtExpiresIn: process.env.CART_JWT_EXPIRES_IN || '7d',

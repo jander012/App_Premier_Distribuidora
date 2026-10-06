@@ -6,6 +6,7 @@ import * as orderRepo from '../../infrastructure/repositories/orderRepository.js
 import * as driverRepo from '../../infrastructure/repositories/driverRepository.js';
 import * as customerRepo from '../../infrastructure/repositories/customerRepository.js';
 import * as storeStatusRepo from '../../infrastructure/repositories/storeStatusRepository.js';
+import * as settingsRepo from '../../infrastructure/repositories/settingsRepository.js';
 import * as whatsappService from './whatsappService.js';
 import * as paymentService from './paymentService.js';
 import * as deliveryPricingService from './deliveryPricingService.js';
@@ -15,6 +16,46 @@ import { env } from '../../infrastructure/config/env.js';
 import { normalizePhone } from '../../domain/shared/phone.js';
 import { AppError } from '../../domain/shared/AppError.js';
 import crypto from 'crypto';
+
+async function resolveExpressDeliveryFee(storeId, distanceResolution) {
+  const cfg = await settingsRepo.getStoreConfig(storeId);
+  if (!cfg || !(cfg.express_delivery_enabled === true || cfg.express_delivery_enabled === 1)) {
+    throw new AppError(400, 'Entrega expressa indisponível para esta loja.');
+  }
+  const maxKm = Number(cfg.express_delivery_max_km);
+  const km = distanceResolution?.distanceKm != null ? Number(distanceResolution.distanceKm) : null;
+  if (Number.isFinite(maxKm) && maxKm > 0 && (km == null || !Number.isFinite(km) || km > maxKm)) {
+    throw new AppError(400, `Entrega expressa disponível apenas até ${maxKm} km.`);
+  }
+  const fee = Number(cfg.express_delivery_fee);
+  return Number.isFinite(fee) && fee > 0 ? Math.round(fee * 100) / 100 : 0;
+}
+
+/** Re-checks per-customer coupon limits under a row lock so concurrent orders cannot exceed them. */
+async function assertCouponStillRedeemable(client, couponId, customerId, discount) {
+  const { rows } = await client.query(
+    `SELECT max_uses_per_user, max_total_discount_per_user FROM coupons WHERE id = $1 FOR UPDATE`,
+    [couponId]
+  );
+  const coupon = rows[0];
+  if (!coupon) throw new AppError(400, 'Cupom inválido ou inativo');
+  const { rows: used } = await client.query(
+    `SELECT COUNT(*) AS n, COALESCE(SUM(discount_amount), 0) AS s
+     FROM coupon_redemptions WHERE coupon_id = $1 AND customer_id = $2`,
+    [couponId, customerId]
+  );
+  const n = Number(used[0]?.n ?? 0);
+  const s = Number(used[0]?.s ?? 0);
+  if (coupon.max_uses_per_user != null && n >= Number(coupon.max_uses_per_user)) {
+    throw new AppError(400, 'Você já utilizou este cupom o número máximo de vezes');
+  }
+  if (
+    coupon.max_total_discount_per_user != null &&
+    Math.round((s + discount) * 100) > Math.round(Number(coupon.max_total_discount_per_user) * 100)
+  ) {
+    throw new AppError(400, 'Valor limite deste cupom para sua conta já foi atingido');
+  }
+}
 
 export async function createOrder(body, opts = {}) {
   const phone =
@@ -37,7 +78,6 @@ export async function createOrder(body, opts = {}) {
     rawKm !== undefined && rawKm !== null && String(rawKm).trim() !== ''
       ? Number(String(rawKm).replace(',', '.'))
       : null;
-  const deliveryAt = body.deliveryAt || body.delivery_at || null;
 
   const cartRow = await cartRepo.getCart(cartId);
   if (!cartRow) throw new AppError(404, 'Carrinho não encontrado');
@@ -63,9 +103,13 @@ export async function createOrder(body, opts = {}) {
     distanceResolution,
     deliveryLat,
     deliveryLng,
-    deliveryAt,
   });
   if (!summary.items.length) throw new AppError(400, 'Carrinho vazio');
+  const badQty = summary.items.find((i) => {
+    const q = Number(i.quantity);
+    return !Number.isInteger(q) || q < 1 || q > cartService.MAX_ITEM_QUANTITY;
+  });
+  if (badQty) throw new AppError(400, `Quantidade inválida no carrinho: ${badQty.name}`);
   const bad = summary.items.find((i) => !i.available);
   if (bad) throw new AppError(400, `Produto indisponível: ${bad.name}`);
   if (!summary.storeId) throw new AppError(400, 'Loja do carrinho indefinida');
@@ -78,7 +122,9 @@ export async function createOrder(body, opts = {}) {
 
   const preTotal = Math.round((Number(summary.subtotal) + Number(summary.deliveryFee)) * 100) / 100;
   const expressDelivery = body.expressDelivery === true || body.express_delivery === true;
-  const expressDeliveryFee = expressDelivery ? Number(body.expressDeliveryFee ?? body.express_delivery_fee ?? 0) : 0;
+  const expressDeliveryFee = expressDelivery
+    ? await resolveExpressDeliveryFee(summary.storeId, distanceResolution)
+    : 0;
   const rawCoupon = body.couponCode ?? body.coupon_code;
   let couponId = null;
   let couponDiscount = 0;
@@ -144,6 +190,7 @@ export async function createOrder(body, opts = {}) {
     order = orderRows[0];
 
     if (couponId != null && couponDiscount > 0) {
+      await assertCouponStillRedeemable(client, couponId, customer.id, couponDiscount);
       await client.query(
         `INSERT INTO coupon_redemptions (coupon_id, customer_id, order_id, discount_amount)
          VALUES ($1, $2, $3, $4)`,

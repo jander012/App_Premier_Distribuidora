@@ -47,7 +47,9 @@ export async function createMedia(req, res, next) {
     } else {
       row = await ingestRemoteImage(raw, { storeId: req.storeId, title });
     }
-    if (!row) return res.status(400).json({ error: 'URL inválida' });
+    if (!row) {
+      return res.status(400).json({ error: 'URL inválida: use um link http(s) externo (links internos /media/files/ não são aceitos).' });
+    }
     res.status(201).json({
       id: row.id,
       publicUrl: row.public_url,

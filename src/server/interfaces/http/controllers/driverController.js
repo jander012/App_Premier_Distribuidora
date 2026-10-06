@@ -125,7 +125,7 @@ export async function driverLogin(req, res, next) {
     if (!row) throw new AppError(401, 'Credenciais inválidas');
     const ok = await bcrypt.compare(String(req.body.password || ''), row.password_hash);
     if (!ok) throw new AppError(401, 'Credenciais inválidas');
-    res.json({ token: tokenService.signDriverToken(row.id, row.store_id), driver: publicDriver(row) });
+    res.json({ token: tokenService.signDriverToken(row.id, row.store_id, row.password_hash), driver: publicDriver(row) });
   } catch (e) {
     next(e);
   }

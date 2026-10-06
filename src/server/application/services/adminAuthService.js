@@ -12,10 +12,12 @@ function normalizeAdminEmail(email) {
     .toLowerCase();
 }
 
+const MAX_CODE_ATTEMPTS = 5;
+
 function buildSessionToken(user) {
   const isSuperAdmin = Boolean(user.is_super_admin);
   return jwt.sign(
-    { sub: user.id, email: user.email, super: isSuperAdmin },
+    { typ: 'admin', sub: user.id, email: user.email, super: isSuperAdmin },
     env.jwtSecret,
     { expiresIn: env.jwtExpiresIn }
   );
@@ -118,7 +120,7 @@ export async function login(email, secret) {
   }
 
   const loginCode = await repo.findLatestActiveAdminLoginCode(user.id);
-  if (!loginCode || Number(loginCode.attempts) >= 5) {
+  if (!loginCode || !(await repo.claimAdminLoginCodeAttempt(loginCode.id, MAX_CODE_ATTEMPTS))) {
     throw new AppError(401, 'Código inválido ou expirado');
   }
 
@@ -129,12 +131,9 @@ export async function login(email, secret) {
     ok = false;
   }
 
-  if (!ok) {
-    await repo.incrementAdminLoginCodeAttempts(loginCode.id);
+  if (!ok || !(await repo.consumeAdminLoginCode(loginCode.id))) {
     throw new AppError(401, 'Código inválido ou expirado');
   }
-
-  await repo.consumeAdminLoginCode(loginCode.id);
   return buildLoginResponse(user);
 }
 

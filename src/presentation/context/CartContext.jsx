@@ -28,19 +28,12 @@ export function CartProvider({ children }) {
   }, [storeSlug]);
 
   useEffect(() => {
+    // O destino só é definido pelo mapa do checkout (que valida o ponto); não reaproveitar ponto antigo da sessão.
+    setDeliveryDestState(null);
     try {
-      const raw = sessionStorage.getItem(`delivery_dest_${storeSlug}`);
-      if (!raw) {
-        setDeliveryDestState(null);
-        return;
-      }
-      const j = JSON.parse(raw);
-      const la = Number(j?.lat);
-      const ln = Number(j?.lng);
-      if (Number.isFinite(la) && Number.isFinite(ln)) setDeliveryDestState({ lat: la, lng: ln });
-      else setDeliveryDestState(null);
+      sessionStorage.removeItem(`delivery_dest_${storeSlug}`);
     } catch {
-      setDeliveryDestState(null);
+      /* ignore */
     }
   }, [storeSlug]);
 
@@ -137,12 +130,16 @@ export function CartProvider({ children }) {
     return createNewCart();
   }, []);
 
+  const summarySeqRef = useRef(0);
+
   const refreshSummary = useCallback(async () => {
     const token = getCartToken();
     if (!token) {
       setSummary(null);
       return;
     }
+    const seq = ++summarySeqRef.current;
+    const isStale = () => seq !== summarySeqRef.current;
     setLoading(true);
     setError(null);
     const kmRaw = deliveryKm.trim().replace(',', '.');
@@ -162,6 +159,7 @@ export function CartProvider({ children }) {
 
     try {
       const data = await loadOnce();
+      if (isStale()) return data;
       setSummary(data);
       if (data?.cartId) setCartId(String(data.cartId));
       return data;
@@ -186,12 +184,13 @@ export function CartProvider({ children }) {
         }
         return null;
       } else {
+        if (isStale()) return null;
         setError(e.message);
         setSummary(null);
         return null;
       }
     } finally {
-      setLoading(false);
+      if (!isStale()) setLoading(false);
     }
   }, [deliveryKm, deliveryDest, ensureCartToken]);
 

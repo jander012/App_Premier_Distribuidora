@@ -14,9 +14,9 @@ export async function requestCode(req, res, next) {
     const payload = { ok: true, message: 'Código enviado (use o canal configurado na loja).' };
     if (env.otpDebugReturn) {
       payload.debugCode = code;
+      // eslint-disable-next-line no-console
+      console.log(`[OTP ${phone}] código: ${code}`);
     }
-    // eslint-disable-next-line no-console
-    console.log(`[OTP ${phone}] código: ${code}`);
     res.json(payload);
   } catch (e) {
     next(e);

@@ -2,6 +2,25 @@ import path from 'path';
 import { promises as fs } from 'fs';
 import { env } from '../../../infrastructure/config/env.js';
 import * as mediaRepo from '../../../infrastructure/repositories/mediaRepository.js';
+import { detectImageMime } from '../../../application/services/mediaIngestService.js';
+
+/**
+ * Media is served from the app origin; legacy rows may hold SVG/HTML with an attacker-chosen type,
+ * so the response type is derived from the bytes and the document is sandboxed.
+ */
+function sendSafeMedia(res, buf) {
+  const mime = detectImageMime(buf);
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  if (mime) {
+    res.setHeader('Content-Type', mime);
+  } else {
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', 'attachment');
+  }
+  return res.send(buf);
+}
 
 export async function serveMediaFile(req, res, next) {
   try {
@@ -14,10 +33,7 @@ export async function serveMediaFile(req, res, next) {
       return res.status(404).send('Arquivo não encontrado');
     }
     if (row.file_data) {
-      const mime = row.mime_type && String(row.mime_type).trim() ? String(row.mime_type).trim() : 'application/octet-stream';
-      res.setHeader('Content-Type', mime);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      return res.send(row.file_data);
+      return sendSafeMedia(res, Buffer.from(row.file_data));
     }
     // Fallback: quando nao ha arquivo local recuperavel (disco efemero em
     // producao, por exemplo), redireciona para a URL de origem/externa.
@@ -61,10 +77,7 @@ export async function serveMediaFile(req, res, next) {
       }
       throw readErr;
     }
-    const mime = row.mime_type && String(row.mime_type).trim() ? String(row.mime_type).trim() : 'application/octet-stream';
-    res.setHeader('Content-Type', mime);
-    res.setHeader('Cache-Control', 'public, max-age=86400');
-    res.send(buf);
+    return sendSafeMedia(res, buf);
   } catch (e) {
     if (e && e.code === 'ENOENT') {
       return res.status(404).send('Arquivo não encontrado');

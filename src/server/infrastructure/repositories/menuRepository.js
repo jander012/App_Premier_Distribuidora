@@ -380,7 +380,8 @@ async function resolveImageAsset(imageUrl, storeId) {
     return { image_url: row.public_url, image_asset_id: row.id };
   }
   const m = await mediaRepo.upsertMediaByPublicUrl(url, { storeId: storeId ?? null, title: null });
-  return { image_url: m?.public_url ?? url, image_asset_id: m?.id ?? null };
+  if (!m) throw new AppError(400, 'URL da imagem inválida: use um link http(s) ou uma imagem da biblioteca.');
+  return { image_url: m.public_url, image_asset_id: m.id };
 }
 
 export async function adminCreateProduct(data) {

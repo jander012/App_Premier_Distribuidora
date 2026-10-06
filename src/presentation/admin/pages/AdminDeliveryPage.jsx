@@ -348,9 +348,9 @@ export function AdminDeliveryPage() {
         </Link>
       </div>
       <p className="muted" style={{ marginTop: 0, fontSize: '0.9rem' }}>
-        Taxa base ou por faixa de quilometragem. Com <strong>origem da loja</strong> + faixas ativas, o sistema usa a{' '}
-        <strong>rota de carro</strong> (OpenStreetMap/OSRM) até o pino do cliente — não distância em linha reta.
-        Multiplicador e extra por dia da semana usam o horário do servidor ao finalizar o pedido. Com{' '}
+        Valor mínimo + <strong>R$ por km</strong> do dia da semana, usando a <strong>menor rota de carro</strong>{' '}
+        (OpenStreetMap/OSRM) entre a <strong>origem da loja</strong> e o local que o cliente marca no checkout.{' '}
+        <strong>Sem a origem da loja definida no mapa abaixo, não há rota</strong> e cobra-se só o valor mínimo. Com{' '}
         <strong>área no mapa</strong>, o cliente marca a entrega dentro do polígono.
       </p>
       {data?.storeId != null && (
@@ -365,7 +365,7 @@ export function AdminDeliveryPage() {
       <form className="card" onSubmit={save} style={{ marginBottom: '1rem' }}>
         <h2 style={{ marginTop: 0, fontSize: '1.05rem' }}>Geral</h2>
         <div className="field">
-          <label>Taxa padrão (R$) — usada se faixas desligadas ou sem km informado</label>
+          <label>Valor mínimo da entrega (R$) — cobrado quando o cálculo por km der menos que isso</label>
           <input
             key={`fee-${data?.deliveryFee ?? ''}`}
             name="delivery_fee"
@@ -610,16 +610,19 @@ export function AdminDeliveryPage() {
           + Faixa
         </button>
 
-        <h2 style={{ fontSize: '1.05rem' }}>Por dia da semana</h2>
+        <h2 style={{ fontSize: '1.05rem' }}>Por dia da semana (R$ por km)</h2>
         <p className="muted" style={{ fontSize: '0.82rem' }}>
-          Taxa final = taxa da faixa (ou padrão) × multiplicador + adicional.
+          Com a origem da loja definida no mapa, a taxa = <strong>km da menor rota × R$/km do dia + R$ extra</strong>,
+          nunca abaixo do <strong>valor mínimo</strong> acima. Ex.: mínimo R$ 9, R$ 2,25/km, extra R$ 0 → 3 km = R$ 9,00
+          (mínimo); 6 km = R$ 13,50. Se faixas por km ou polígonos com taxa estiverem ativos, a coluna da esquerda volta a
+          ser um multiplicador da taxa da faixa/área.
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table className="admin-table">
             <thead>
               <tr>
                 <th>Dia</th>
-                <th>Multiplicador</th>
+                <th>R$ por km</th>
                 <th>+ R$ extra</th>
               </tr>
             </thead>

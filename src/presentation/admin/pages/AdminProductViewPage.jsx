@@ -80,7 +80,7 @@ export function AdminProductViewPage() {
         </p>
         <p>
           <span className="muted">URL da imagem:</span>{' '}
-          {product.image_url ? (
+          {product.image_url && /^(https?:\/\/|\/(?!\/))/i.test(product.image_url) ? (
             <a href={product.image_url} target="_blank" rel="noreferrer">
               {product.image_url}
             </a>

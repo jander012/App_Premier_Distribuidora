@@ -5,22 +5,34 @@ import { query } from '../config/db.js';
  * @param {string} publicUrl
  * @param {{ storeId?: number|null, title?: string|null }} [opts]
  */
+/**
+ * URLs registered "só link" must be http(s) or a same-origin relative path, and must not alias
+ * the internal /media/files/<uuid> route (that would hijack another asset's resolution).
+ */
+export function isRegistrableMediaUrl(url) {
+  const u = String(url ?? '').trim();
+  if (!u) return false;
+  if (/\/media\/files\//i.test(u)) return false;
+  return /^https?:\/\//i.test(u) || (u.startsWith('/') && !u.startsWith('//'));
+}
+
 export async function upsertMediaByPublicUrl(publicUrl, opts = {}) {
   const url = publicUrl?.trim();
-  if (!url) return null;
+  if (!url || !isRegistrableMediaUrl(url)) return null;
   const storeId = opts.storeId ?? null;
   const titleRaw = opts.title != null ? String(opts.title).trim() : '';
   const titleVal = titleRaw.length ? titleRaw : null;
+  // Global dedup by URL hash: the first owner keeps the asset; other stores never overwrite it.
   await query(
     `INSERT INTO media_assets (content_hash, public_url, store_id, title)
      VALUES (SHA2($1, 256), $1, $2, $3)
      ON DUPLICATE KEY UPDATE
-       public_url = VALUES(public_url),
-       store_id = COALESCE(VALUES(store_id), media_assets.store_id),
        title = CASE
-         WHEN VALUES(title) IS NOT NULL AND length(trim(VALUES(title))) > 0 THEN VALUES(title)
+         WHEN (media_assets.store_id IS NULL OR media_assets.store_id = VALUES(store_id))
+              AND VALUES(title) IS NOT NULL AND length(trim(VALUES(title))) > 0 THEN VALUES(title)
          ELSE media_assets.title
-       END`,
+       END,
+       store_id = COALESCE(media_assets.store_id, VALUES(store_id))`,
     [url, storeId, titleVal]
   );
   const { rows } = await query(`SELECT * FROM media_assets WHERE content_hash = SHA2($1, 256)`, [url]);
@@ -43,16 +55,18 @@ export async function findForMediaFileServe(pathUuid) {
   if (!u) return null;
   // Evita REGEXP_REPLACE com argumentos de posição/ocorrência, que não é
   // suportado pelo MariaDB (produção). LIKE funciona em MySQL e MariaDB.
+  const exact = await findById(u);
+  if (exact) return exact;
+  // Legacy rows whose public_url points at this path; the oldest one is the original owner.
   const likeApi = `%/api/media/files/${u.toLowerCase()}`;
   const likeShort = `%/media/files/${u.toLowerCase()}`;
   const { rows } = await query(
     `SELECT * FROM media_assets
-     WHERE id = $1
+     WHERE lower(trim(public_url)) LIKE $1
         OR lower(trim(public_url)) LIKE $2
-        OR lower(trim(public_url)) LIKE $3
-     ORDER BY (storage_path IS NOT NULL AND trim(COALESCE(storage_path, '')) <> '') DESC, created_at DESC
+     ORDER BY created_at ASC
      LIMIT 1`,
-    [u, likeApi, likeShort]
+    [likeApi, likeShort]
   );
   return rows[0] || null;
 }
@@ -77,12 +91,15 @@ export async function mergeMediaStoreAndTitle(contentHash, patch = {}) {
   const sourceUrl = patch.sourceUrl != null && String(patch.sourceUrl).trim() ? String(patch.sourceUrl).trim() : null;
   await query(
     `UPDATE media_assets SET
-       store_id = COALESCE($2, store_id),
        title = CASE
-         WHEN $3 IS NOT NULL AND length(trim($3)) > 0 THEN $3
+         WHEN (store_id IS NULL OR store_id = $2) AND $3 IS NOT NULL AND length(trim($3)) > 0 THEN $3
          ELSE title
        END,
-       source_url = COALESCE(media_assets.source_url, $4)
+       source_url = CASE
+         WHEN store_id IS NULL OR store_id = $2 THEN COALESCE(media_assets.source_url, $4)
+         ELSE source_url
+       END,
+       store_id = COALESCE(store_id, $2)
      WHERE content_hash = $1`,
     [h, storeId, titleParam, sourceUrl]
   );
