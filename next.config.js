@@ -11,6 +11,10 @@ const nextConfig = {
     ignoreDuringBuilds: true,
   },
   poweredByHeader: false,
+  // O app não usa next/image; desligar o otimizador fecha o caminho sharp/libheif (GHSA-2xp9-vwfh-vxw4).
+  images: {
+    unoptimized: true,
+  },
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }];
   },
