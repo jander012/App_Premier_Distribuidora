@@ -55,8 +55,18 @@ export function Layout({ children }) {
             )}
           </div>
           <nav className="nav-actions">
-            <Link to="/meus-pedidos" className="orders-link">
-              Meus pedidos
+            <Link to="/meus-pedidos" className="orders-link" aria-label="Meus pedidos" title="Meus pedidos">
+              <svg className="orders-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                  d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Z"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+                <path d="M9 8h6M9 12h6M9 16h3" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
+              </svg>
+              <span className="orders-link__label">Meus pedidos</span>
             </Link>
             {storeOpen && (
               <Link to="/carrinho" className="cart-link">
