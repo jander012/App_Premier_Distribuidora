@@ -68,7 +68,9 @@ try {
         if (
           e?.code === 'ER_DUP_FIELDNAME' ||
           e?.code === 'ER_DUP_KEYNAME' ||
-          e?.code === 'ER_CHECK_CONSTRAINT_DUP_NAME'
+          e?.code === 'ER_CHECK_CONSTRAINT_DUP_NAME' ||
+          // MySQL 8 reporta CHECK duplicado com o código 1826 (ER_FK_DUP_NAME).
+          (e?.code === 'ER_FK_DUP_NAME' && /check constraint/i.test(e?.sqlMessage || ''))
         ) {
           continue;
         }
