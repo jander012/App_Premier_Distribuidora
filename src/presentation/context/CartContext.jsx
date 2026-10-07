@@ -10,7 +10,9 @@ const CartContext = createContext(null);
 export function CartProvider({ children }) {
   const { storeSlug } = useStore();
   const [cartId, setCartId] = useState(() => localStorage.getItem(CART_ID_KEY));
-  const [phone, setPhoneState] = useState(() => sessionStorage.getItem(PHONE_KEY) || '');
+  const [phone, setPhoneState] = useState(
+    () => localStorage.getItem(PHONE_KEY) || sessionStorage.getItem(PHONE_KEY) || ''
+  );
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -85,8 +87,9 @@ export function CartProvider({ children }) {
   const setPhone = useCallback((p) => {
     const digits = String(p || '').replace(/\D/g, '');
     setPhoneState(digits);
-    if (digits) sessionStorage.setItem(PHONE_KEY, digits);
-    else sessionStorage.removeItem(PHONE_KEY);
+    if (digits) localStorage.setItem(PHONE_KEY, digits);
+    else localStorage.removeItem(PHONE_KEY);
+    sessionStorage.removeItem(PHONE_KEY);
   }, []);
 
   const ensureCartToken = useCallback(async () => {

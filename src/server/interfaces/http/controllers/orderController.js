@@ -1,5 +1,6 @@
 import * as orderService from '../../../application/services/orderService.js';
 import * as storeRepo from '../../../infrastructure/repositories/storeRepository.js';
+import * as orderRepo from '../../../infrastructure/repositories/orderRepository.js';
 
 export async function create(req, res, next) {
   try {
@@ -23,7 +24,12 @@ export async function getOne(req, res, next) {
       Number(req.params.id),
       req.clientPhone
     );
-    res.json({ order: formatOrder(order), items: items.map(formatItem) });
+    const history = await orderRepo.getStatusHistory(order.id);
+    res.json({
+      order: formatOrder(order),
+      items: items.map(formatItem),
+      history: history.map((h) => ({ status: h.status, note: h.note, at: h.created_at })),
+    });
   } catch (e) {
     next(e);
   }
@@ -110,7 +116,11 @@ export function formatOrder(o) {
       phone: o.customer_phone,
     },
     createdAt: o.created_at,
+    updatedAt: o.updated_at ?? null,
     deliveryConfirmedAt: o.delivery_confirmed_at,
+    ...(o.store_name !== undefined ? { storeName: o.store_name } : {}),
+    ...(o.item_count !== undefined ? { itemCount: Number(o.item_count) } : {}),
+    ...(o.item_names !== undefined ? { itemNames: o.item_names || '' } : {}),
   };
 }
 

@@ -40,13 +40,41 @@ export function clearCartAuth() {
   localStorage.removeItem(CART_TOKEN_KEY);
 }
 
+/** Expiração (ms) lida do próprio JWT, sem validar assinatura — só para descartar sessão vencida. */
+function tokenExpiresAt(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Sessão do cliente persiste no aparelho (localStorage) para ele acompanhar pedidos depois. */
 export function getClientToken() {
-  return sessionStorage.getItem(CLIENT_TOKEN_KEY);
+  if (typeof window === 'undefined') return null;
+  let t = localStorage.getItem(CLIENT_TOKEN_KEY);
+  if (!t) {
+    const legacy = sessionStorage.getItem(CLIENT_TOKEN_KEY);
+    if (legacy) {
+      localStorage.setItem(CLIENT_TOKEN_KEY, legacy);
+      sessionStorage.removeItem(CLIENT_TOKEN_KEY);
+      t = legacy;
+    }
+  }
+  if (!t) return null;
+  const exp = tokenExpiresAt(t);
+  if (exp != null && exp <= Date.now()) {
+    localStorage.removeItem(CLIENT_TOKEN_KEY);
+    return null;
+  }
+  return t;
 }
 
 export function setClientToken(token) {
-  if (token) sessionStorage.setItem(CLIENT_TOKEN_KEY, token);
-  else sessionStorage.removeItem(CLIENT_TOKEN_KEY);
+  if (token) localStorage.setItem(CLIENT_TOKEN_KEY, token);
+  else localStorage.removeItem(CLIENT_TOKEN_KEY);
+  sessionStorage.removeItem(CLIENT_TOKEN_KEY);
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event('delivery-client-auth'));
   }

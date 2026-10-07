@@ -14,6 +14,7 @@ function getMysqlPool() {
       connectionLimit: Number(process.env.DB_POOL_SIZE || 10),
       namedPlaceholders: false,
       multipleStatements: false,
+      timezone: 'Z',
     });
   }
   return mysqlPool;

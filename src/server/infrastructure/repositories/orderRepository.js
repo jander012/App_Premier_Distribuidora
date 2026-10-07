@@ -83,9 +83,24 @@ export async function getOrderItems(orderId) {
   return rows;
 }
 
+export async function getStatusHistory(orderId) {
+  const { rows } = await query(
+    `SELECT status, note, created_at FROM order_status_history WHERE order_id = $1 ORDER BY created_at ASC, id ASC`,
+    [orderId]
+  );
+  return rows;
+}
+
 export async function listOrdersByPhone(phone, storeId = null) {
   const params = [phone];
-  let sql = `SELECT o.* FROM orders o WHERE o.customer_phone = $1`;
+  let sql = `SELECT o.*,
+                    s.name AS store_name,
+                    (SELECT COALESCE(SUM(oi.quantity), 0) FROM order_items oi WHERE oi.order_id = o.id) AS item_count,
+                    (SELECT GROUP_CONCAT(oi.product_name ORDER BY oi.id SEPARATOR ', ')
+                       FROM order_items oi WHERE oi.order_id = o.id) AS item_names
+             FROM orders o
+             LEFT JOIN stores s ON s.id = o.store_id
+             WHERE o.customer_phone = $1`;
   if (storeId != null) {
     params.push(storeId);
     sql += ` AND o.store_id = $2`;
