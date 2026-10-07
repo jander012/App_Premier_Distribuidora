@@ -67,6 +67,7 @@ export function Layout({ children }) {
                 <path d="M9 8h6M9 12h6M9 16h3" fill="none" stroke="currentColor" strokeLinecap="round" strokeWidth="2" />
               </svg>
               <span className="orders-link__label">Meus pedidos</span>
+              <span className="orders-link__short">Pedidos</span>
             </Link>
             {storeOpen && (
               <Link to="/carrinho" className="cart-link">

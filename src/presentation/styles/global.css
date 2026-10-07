@@ -637,6 +637,10 @@ a {
   flex: 0 0 20px;
 }
 
+.orders-link__short {
+  display: none;
+}
+
 .badge {
   background: var(--accent);
   color: #0f172a;
@@ -2328,7 +2332,7 @@ body {
   }
 
   .app-shell:not(.app-shell--admin) .brand {
-    width: calc(100vw - 10rem);
+    width: 100%;
     font-size: 0.95rem;
   }
 
@@ -2392,6 +2396,11 @@ body {
     display: none;
   }
 
+  .app-shell:not(.app-shell--admin) .orders-link {
+    gap: 0.35rem;
+    font-weight: 800;
+  }
+
   .app-shell:not(.app-shell--admin) .nav-actions {
     gap: 0.45rem;
   }
@@ -2400,7 +2409,7 @@ body {
     display: block;
   }
 
-  .app-shell:not(.app-shell--admin) .cart-link span:first-child {
+  .app-shell:not(.app-shell--admin) .cart-link > span:not(.badge) {
     display: none;
   }
 
@@ -2542,5 +2551,15 @@ body {
 
   .checkout-location-actions .btn {
     width: 100%;
+  }
+}
+
+@media (min-width: 380px) and (max-width: 760px) {
+  .app-shell:not(.app-shell--admin) .orders-link__short {
+    display: inline;
+  }
+
+  .app-shell:not(.app-shell--admin) .orders-link {
+    padding: 0 0.75rem;
   }
 }
