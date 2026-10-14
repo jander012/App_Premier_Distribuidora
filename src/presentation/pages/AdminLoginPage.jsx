@@ -24,6 +24,10 @@ export function AdminLoginPage() {
     let alive = true;
     api.get('/admin/auth-mode')
       .then((res) => {
+        if (alive && res?.sso) {
+          window.location.replace(res.sso);
+          return;
+        }
         if (alive && res?.mode === 'email_code') setAuthMode('email_code');
       })
       .catch(() => {

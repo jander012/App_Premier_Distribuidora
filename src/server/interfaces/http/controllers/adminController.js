@@ -9,8 +9,16 @@ import * as orderService from '../../../application/services/orderService.js';
 import * as thermalReceiptService from '../../../application/services/thermalReceiptService.js';
 import * as productImport from '../../../application/services/productImportService.js';
 import { formatOrder, formatItem } from './orderController.js';
+import { panelUrl, ssoClient, ssoInfo } from '../../../infrastructure/sso/ssoClient.js';
+
+function ssoOnly(req) {
+  const sso = ssoClient();
+  return sso ? new AppError(410, 'Entre pelo login único da Premier.', { sso: sso.loginUrl(panelUrl(req)) }) : null;
+}
 
 export async function login(req, res, next) {
+  const blocked = ssoOnly(req);
+  if (blocked) return next(blocked);
   try {
     const email = req.body?.email;
     const authMode = adminAuth.getAuthMode();
@@ -28,15 +36,18 @@ export async function login(req, res, next) {
   }
 }
 
-export async function getAuthMode(_req, res, next) {
+export async function getAuthMode(req, res, next) {
   try {
-    res.json({ mode: adminAuth.getAuthMode() });
+    const sso = ssoClient();
+    res.json({ mode: adminAuth.getAuthMode(), sso: sso ? sso.loginUrl(panelUrl(req)) : null });
   } catch (e) {
     next(e);
   }
 }
 
 export async function requestAccessCode(req, res, next) {
+  const blocked = ssoOnly(req);
+  if (blocked) return next(blocked);
   try {
     const email = req.body?.email;
     if (email == null || String(email).trim() === '') {
@@ -58,7 +69,7 @@ export async function getMe(req, res, next) {
     const adminId = Number(raw);
     if (!Number.isFinite(adminId)) return next(new AppError(401, 'Token inválido'));
     const session = await adminAuth.getSessionForAdminId(adminId);
-    res.json(session);
+    res.json({ ...session, sso: ssoInfo() });
   } catch (e) {
     next(e);
   }

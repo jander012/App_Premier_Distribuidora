@@ -70,7 +70,24 @@ export function adminHeaders() {
   return h;
 }
 
+/** Login único (SSO) ligado no servidor: { url, portal } ou null. */
+export const ADMIN_SSO_KEY = 'admin_sso';
+
+export function getAdminSso() {
+  try {
+    return JSON.parse(localStorage.getItem(ADMIN_SSO_KEY) || 'null');
+  } catch {
+    return null;
+  }
+}
+
+export function setAdminSso(info) {
+  if (info?.url) localStorage.setItem(ADMIN_SSO_KEY, JSON.stringify(info));
+  else localStorage.removeItem(ADMIN_SSO_KEY);
+}
+
 export function clearAdminClientSession() {
+  localStorage.removeItem(ADMIN_SSO_KEY);
   localStorage.removeItem(ADMIN_TOKEN_KEY);
   localStorage.removeItem(ADMIN_STORES_KEY);
   localStorage.removeItem(ADMIN_SUPER_KEY);

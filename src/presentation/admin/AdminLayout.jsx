@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from '../navigation.js';
-import { api } from '../api/client.js';
+import { api, ssoRefresh } from '../api/client.js';
 import {
   adminAuthHeadersOnly,
   clearAdminClientSession,
+  getAdminSso,
+  setAdminSso,
   getAdminStoreId,
   getAdminStoresList,
   getAdminToken,
@@ -55,17 +57,28 @@ export function AdminLayout({ children }) {
     let alive = true;
     async function bootstrap() {
       setBootErr(null);
-      if (!getAdminToken()) {
-        setBooting(false);
-        nav('/admin', { replace: true });
-        return;
+      // Com o login único (SSO) não há token no navegador: o cookie do SSO vale e o /admin/me confirma.
+      if (!getAdminToken() && !getAdminSso()) {
+        try {
+          const mode = await api.get('/admin/auth-mode');
+          if (!alive) return;
+          if (mode?.sso) setAdminSso({ url: new URL(mode.sso).origin });
+        } catch {
+          // segue para o login
+        }
+        if (!getAdminSso()) {
+          setBooting(false);
+          nav('/admin', { replace: true });
+          return;
+        }
       }
       let list = getAdminStoresList();
       let isSuper = getIsSuperAdmin();
-      if (list.length === 0) {
+      if (list.length === 0 || getAdminSso()) {
         try {
           const me = await api.get('/admin/me', { headers: adminAuthHeadersOnly() });
           if (!alive) return;
+          setAdminSso(me.sso);
           setAdminStoresList(me.stores || []);
           isSuper = Boolean(me.admin?.isSuperAdmin ?? me.admin?.is_super_admin);
           setIsSuperAdmin(isSuper);
@@ -73,6 +86,12 @@ export function AdminLayout({ children }) {
           list = me.stores || [];
         } catch (e) {
           if (!alive) return;
+          if (e?.status === 401 && e?.details?.sso) return;
+          if (e?.status === 403 && e?.details?.portal) {
+            setBootErr(e.message);
+            setBooting(false);
+            return;
+          }
           if (e?.status === 401) {
             clearAdminClientSession();
             setBooting(false);
@@ -115,6 +134,22 @@ export function AdminLayout({ children }) {
   }, [nav]);
 
   useEffect(() => {
+    if (booting) return undefined;
+    const sso = getAdminSso();
+    if (!sso?.url) return undefined;
+    // O acesso do SSO dura poucos minutos: renova enquanto a aba está aberta (uploads usam fetch direto).
+    const renew = () => {
+      if (document.visibilityState === 'visible') ssoRefresh(sso.url);
+    };
+    const timer = setInterval(renew, 10 * 60 * 1000);
+    document.addEventListener('visibilitychange', renew);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', renew);
+    };
+  }, [booting]);
+
+  useEffect(() => {
     localStorage.setItem(SIDEBAR_KEY, collapsed ? '1' : '0');
   }, [collapsed]);
 
@@ -140,7 +175,12 @@ export function AdminLayout({ children }) {
   }
 
   function logout() {
+    const sso = getAdminSso();
     clearAdminClientSession();
+    if (sso?.url) {
+      window.location.assign(`${sso.url}/sair?return=${encodeURIComponent(`${window.location.origin}/admin`)}`);
+      return;
+    }
     nav('/admin');
   }
 

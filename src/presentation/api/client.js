@@ -84,7 +84,28 @@ function mergeHeaders(base = {}, ...extras) {
   return extras.reduce((acc, extra) => ({ ...acc, ...extra }), { ...base });
 }
 
-async function request(path, options = {}) {
+let ssoRefreshing = null;
+
+/** Renova o acesso no login único (SSO) sem sair da tela. Uma renovação por vez. */
+export function ssoRefresh(loginUrl) {
+  if (!ssoRefreshing) {
+    ssoRefreshing = fetch(`${new URL(loginUrl).origin}/api/refresh`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-Requested-With': 'premier-sso' },
+    })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        setTimeout(() => {
+          ssoRefreshing = null;
+        }, 0);
+      });
+  }
+  return ssoRefreshing;
+}
+
+async function request(path, options = {}, retried = false) {
   const url = `${BASE}${path.startsWith('/') ? path : `/${path}`}`;
   const headers = mergeHeaders(options.headers || {});
   if (options.body != null && typeof options.body === 'string' && !headers['Content-Type']) {
@@ -97,6 +118,11 @@ async function request(path, options = {}) {
     data = text ? JSON.parse(text) : null;
   } catch {
     data = text;
+  }
+  const ssoLogin = res.status === 401 ? data?.details?.sso : null;
+  if (ssoLogin && typeof window !== 'undefined') {
+    if (!retried && (await ssoRefresh(ssoLogin))) return request(path, options, true);
+    window.location.assign(ssoLogin);
   }
   if (!res.ok) {
     const msg =
