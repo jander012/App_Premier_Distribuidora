@@ -7,7 +7,7 @@ services:
       MYSQL_USER: delivery
       MYSQL_PASSWORD: delivery_secret
     ports:
-      - "3307:3306"
+      - "3308:3306"
     volumes:
       - delivery_mysql_data:/var/lib/mysql
 
