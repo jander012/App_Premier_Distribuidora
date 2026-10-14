@@ -5,10 +5,13 @@ export const { hasModule } = ssoLib;
 
 let client;
 
-/** Login único da Premier para o painel. Ligado com SSO_URL; sem ele vale o login próprio do painel. */
+const SSO_PADRAO = 'https://sso.premierdistribuidora.com.br';
+
+/** Login único da Premier: sem SSO_URL vale o SSO de produção; SSO_URL=desligado volta ao login próprio (emergência). */
 export function ssoClient() {
   if (client === undefined) {
-    const url = String(process.env.SSO_URL || '').trim();
+    const raw = String(process.env.SSO_URL || '').trim();
+    const url = raw.toLowerCase() === 'desligado' ? '' : raw || SSO_PADRAO;
     client = url ? new ssoLib.SsoClient({ ssoUrl: url }) : null;
   }
   return client;
