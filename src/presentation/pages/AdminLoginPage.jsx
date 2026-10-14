@@ -24,8 +24,9 @@ export function AdminLoginPage() {
     let alive = true;
     api.get('/admin/auth-mode')
       .then((res) => {
+        // Com o login único, o painel confere a sessão: logado entra direto; sem sessão vai para o login do SSO.
         if (alive && res?.sso) {
-          window.location.replace(res.sso);
+          nav('/admin/painel', { replace: true });
           return;
         }
         if (alive && res?.mode === 'email_code') setAuthMode('email_code');

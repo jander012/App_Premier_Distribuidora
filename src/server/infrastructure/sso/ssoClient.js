@@ -17,12 +17,16 @@ export function ssoClient() {
   return client;
 }
 
-/** Página do painel para onde voltar depois do login no SSO. */
+/** Página do painel para onde voltar depois do login no SSO (nunca a tela de login /admin, que voltaria para o SSO). */
 export function panelUrl(req) {
-  const referer = String(req.headers.referer || '');
-  if (referer) return referer;
   const proto = String(req.headers['x-forwarded-proto'] || 'https').split(',')[0].trim();
   const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').split(',')[0].trim();
+  const referer = String(req.headers.referer || '');
+  try {
+    if (referer && new URL(referer).pathname.startsWith('/admin/painel')) return referer;
+  } catch {
+    // Referer inválido: usa o painel.
+  }
   return `${proto}://${host}/admin/painel`;
 }
 
