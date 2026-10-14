@@ -137,6 +137,14 @@ export function AdminLayout({ children }) {
     if (booting) return undefined;
     const sso = getAdminSso();
     if (!sso?.url) return undefined;
+    // Menu com os outros sistemas, servido pelo SSO e aberto pelo botão "Sistemas".
+    if (!document.querySelector('script[data-premier-menu]')) {
+      const script = document.createElement('script');
+      script.src = `${sso.url}/menu.js`;
+      script.defer = true;
+      script.dataset.premierMenu = '';
+      document.head.appendChild(script);
+    }
     // O acesso do SSO dura poucos minutos: renova enquanto a aba está aberta (uploads usam fetch direto).
     const renew = () => {
       if (document.visibilityState === 'visible') ssoRefresh(sso.url);
@@ -366,7 +374,17 @@ export function AdminLayout({ children }) {
             </select>
           </div>
         )}
-        <div style={{ padding: '1rem', marginTop: 'auto' }}>
+        <div style={{ padding: '1rem', marginTop: 'auto', display: 'grid', gap: '0.5rem' }}>
+          {!booting && getAdminSso()?.url && (
+            <a
+              href={`${getAdminSso().url}/`}
+              className="btn btn-ghost"
+              style={{ width: '100%', textAlign: 'center', boxSizing: 'border-box' }}
+              data-premier-sistemas=""
+            >
+              {!collapsed || isMobileNav ? 'Sistemas' : '☰'}
+            </a>
+          )}
           <button type="button" className="btn btn-ghost" style={{ width: '100%' }} onClick={logout}>
             {!collapsed || isMobileNav ? 'Sair' : '×'}
           </button>
