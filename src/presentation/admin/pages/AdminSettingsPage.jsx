@@ -80,15 +80,77 @@ function mediaSrc(url) {
   return u;
 }
 
-function HeroImagePreview({ url, label }) {
+const HERO_OVERLAY =
+  'linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%)';
+
+function heroBackgroundStyle(url) {
+  const raw = mediaSrc(url);
+  if (!raw) return undefined;
+  return {
+    backgroundImage: `${HERO_OVERLAY}, url("${raw.replace(/"/g, '%22')}")`,
+  };
+}
+
+function HeroImagePreview({ url, label, onPreview }) {
   const src = mediaSrc(url);
   if (!src) return null;
   return (
     <div className="admin-hero-preview">
-      <img src={src} alt={label || 'Banner'} loading="lazy" onError={(e) => { e.currentTarget.classList.add('is-broken'); }} />
-      <a className="muted" href={src} target="_blank" rel="noopener noreferrer" style={{ wordBreak: 'break-all', fontSize: '0.78rem' }}>
+      <button
+        type="button"
+        className="admin-hero-preview__thumb"
+        onClick={() => onPreview?.({ url, label })}
+        title="Ver como fica no home"
+      >
+        <img src={src} alt={label || 'Banner'} loading="lazy" onError={(e) => { e.currentTarget.classList.add('is-broken'); }} />
+        <span className="admin-hero-preview__hint">Clique para projetar no home</span>
+      </button>
+      <span className="muted" style={{ wordBreak: 'break-all', fontSize: '0.78rem' }}>
         {url}
-      </a>
+      </span>
+    </div>
+  );
+}
+
+/** Preview interno: como o banner aparece no hero do cardápio (home). */
+function HomeHeroProjection({ url, label, onClose }) {
+  const style = heroBackgroundStyle(url);
+  return (
+    <div
+      className="admin-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Projeção do banner no home"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+      onKeyDown={(e) => e.key === 'Escape' && onClose()}
+    >
+      <div className="admin-modal card admin-hero-projection" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-toolbar" style={{ marginBottom: '0.75rem' }}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: '1.1rem' }}>Projeção no home</h2>
+            <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>
+              {label || 'Banner'} · visão interna de como fica no cardápio quando este mês entrar
+            </p>
+          </div>
+          <button type="button" className="btn btn-ghost" style={{ width: 'auto' }} onClick={onClose}>
+            Fechar
+          </button>
+        </div>
+        <div className="admin-hero-projection__frame">
+          <section className="menu-hero" style={style}>
+            <div>
+              <span className="menu-hero__eyebrow">Delivery Premier</span>
+              <h1 className="page-title">Cardápio</h1>
+              <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+            </div>
+            <div className="menu-hero__meta">
+              <strong>Aberto</strong>
+              <span>Entrega rápida</span>
+            </div>
+          </section>
+          <div className="admin-hero-projection__fake-search muted">Buscar produtos…</div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -141,6 +203,7 @@ export function AdminSettingsPage() {
   const [autoSchedule, setAutoSchedule] = useState(false);
   const [timezone, setTimezone] = useState('America/Cuiaba');
   const [hoursMsg, setHoursMsg] = useState(null);
+  const [heroProjection, setHeroProjection] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = useCallback(async () => {
@@ -475,9 +538,16 @@ export function AdminSettingsPage() {
           <input name="menu_base_url" defaultValue={settings.menu_base_url || ''} />
         </div>
         <div className="section-label">Banner do cardápio</div>
+        <p className="muted" style={{ marginTop: 0, fontSize: '0.85rem' }}>
+          Clique em uma imagem para projetar (só no admin) como ficará no home quando aquele mês entrar.
+        </p>
         <div className="field">
           <label>Imagem padrão do banner</label>
-          <HeroImagePreview url={settings.hero_image_url} label="Banner padrão" />
+          <HeroImagePreview
+            url={settings.hero_image_url}
+            label="Banner padrão"
+            onPreview={setHeroProjection}
+          />
           <input
             name="hero_image_file"
             type="file"
@@ -488,7 +558,11 @@ export function AdminSettingsPage() {
           {HERO_MONTHS.map(([key, label]) => (
             <div className="field" key={key}>
               <label>{label}</label>
-              <HeroImagePreview url={heroMonthlyImages[key]} label={`Banner ${label}`} />
+              <HeroImagePreview
+                url={heroMonthlyImages[key]}
+                label={`Banner ${label}`}
+                onPreview={setHeroProjection}
+              />
               <input
                 name={`hero_month_file_${key}`}
                 type="file"
@@ -530,6 +604,14 @@ export function AdminSettingsPage() {
           Salvar
         </button>
       </form>
+
+      {heroProjection && (
+        <HomeHeroProjection
+          url={heroProjection.url}
+          label={heroProjection.label}
+          onClose={() => setHeroProjection(null)}
+        />
+      )}
     </div>
   );
 }
