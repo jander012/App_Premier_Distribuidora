@@ -16,32 +16,62 @@ L.Icon.Default.mergeOptions({
   shadowUrl: imageUrl(markerShadow),
 });
 
-const DEFAULT_CENTER = [-15.601, -56.097]; // Cuiabá — fallback da loja
+/** Fallback se a loja ainda não tiver origem cadastrada. */
+const DEFAULT_CENTER = [-15.601, -56.097];
+const NEAR_STORE_KM = 180;
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 
 function pinIcon(label, tone) {
   return L.divIcon({
     className: `admin-orders-map__pin admin-orders-map__pin--${tone}`,
-    html: `<span>${label}</span>`,
-    iconSize: [64, 28],
-    iconAnchor: [32, 28],
+    html: `<span>${esc(label)}</span>`,
+    iconSize: [72, 28],
+    iconAnchor: [36, 28],
   });
 }
 
-function deliveryPin(row) {
-  const lat = Number(row.delivery_latitude ?? row.delivery?.latitude);
-  const lng = Number(row.delivery_longitude ?? row.delivery?.longitude);
+/** Normaliza lat/lng (corrige troca comum) e rejeita inválidos. */
+function normalizeLatLng(rawLat, rawLng) {
+  let lat = Number(rawLat);
+  let lng = Number(rawLng);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  // Clássico: valores trocados (lng em campo de lat)
+  if (Math.abs(lat) > 90 && Math.abs(lng) <= 90) {
+    const t = lat;
+    lat = lng;
+    lng = t;
+  }
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  if (lat === 0 && lng === 0) return null;
   return { lat, lng };
 }
 
+function kmBetween(a, b) {
+  return L.latLng(a.lat, a.lng).distanceTo([b.lat, b.lng]) / 1000;
+}
+
+function nearStore(point, store, maxKm = NEAR_STORE_KM) {
+  if (!store) return true;
+  return kmBetween(point, store) <= maxKm;
+}
+
+function deliveryPin(row) {
+  return normalizeLatLng(row.delivery_latitude ?? row.delivery?.latitude, row.delivery_longitude ?? row.delivery?.longitude);
+}
+
 function driverPin(row) {
-  const lat = Number(row.driver_lat);
-  const lng = Number(row.driver_lng);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  const pin = normalizeLatLng(row.driver_lat, row.driver_lng);
+  if (!pin) return null;
   const at = row.driver_location_at ? new Date(row.driver_location_at).getTime() : 0;
-  // GPS antigo (>45 min) não entra no mapa
   if (at && Date.now() - at > 45 * 60 * 1000) return null;
-  return { lat, lng };
+  return pin;
 }
 
 function toneForStatus(status) {
@@ -50,24 +80,33 @@ function toneForStatus(status) {
   return 'route';
 }
 
+function isOnRoute(status) {
+  return status === 'out_for_delivery' || status === 'delivered_pending_confirmation';
+}
+
+function isNext(status) {
+  return status === 'received' || status === 'preparing';
+}
+
 /**
- * Mapa ao vivo: destinos dos pedidos do Kanban + entregadores em rota (filtráveis).
- * @param {{
- *   orders: object[],
- *   storeOriginLat?: number|null,
- *   storeOriginLng?: number|null,
- * }} props
+ * Mapa ao vivo: loja fixa + pontos conforme o filtro.
  */
 export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
   const wrapRef = useRef(null);
   const mapRef = useRef(null);
-  const layerRef = useRef(null);
-  const [driverFilter, setDriverFilter] = useState('all');
+  const storeLayerRef = useRef(null);
+  const dynamicLayerRef = useRef(null);
+  const [filter, setFilter] = useState('all');
+
+  const storePoint = useMemo(() => {
+    const p = normalizeLatLng(storeOriginLat, storeOriginLng);
+    return p || { lat: DEFAULT_CENTER[0], lng: DEFAULT_CENTER[1], isFallback: true };
+  }, [storeOriginLat, storeOriginLng]);
 
   const driversOnRoute = useMemo(() => {
     const map = new Map();
     for (const o of orders || []) {
-      if (o.status !== 'out_for_delivery' && o.status !== 'delivered_pending_confirmation') continue;
+      if (!isOnRoute(o.status)) continue;
       const id = o.assigned_driver_id ?? o.driver_id;
       if (id == null) continue;
       const name = o.driver_name || `Entregador #${id}`;
@@ -77,105 +116,144 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
   }, [orders]);
 
   useEffect(() => {
-    if (driverFilter === 'all') return;
-    if (!driversOnRoute.some((d) => String(d.id) === String(driverFilter))) {
-      setDriverFilter('all');
+    if (filter === 'all' || filter === 'next' || filter === 'route') return;
+    if (filter.startsWith('driver:')) {
+      const id = filter.slice(7);
+      if (!driversOnRoute.some((d) => String(d.id) === id)) setFilter('all');
     }
-  }, [driversOnRoute, driverFilter]);
+  }, [driversOnRoute, filter]);
 
   const markers = useMemo(() => {
     const list = [];
+    const store = storePoint.isFallback ? null : storePoint;
+
     for (const o of orders || []) {
-      const dest = deliveryPin(o);
-      if (dest) {
-        list.push({
-          key: `order-${o.id}`,
-          kind: 'order',
-          lat: dest.lat,
-          lng: dest.lng,
-          tone: toneForStatus(o.status),
-          label: `#${o.id}`,
-          title: `${o.customer_full_name || 'Cliente'} · #${o.id}`,
-          status: o.status,
-          driverId: o.assigned_driver_id ?? o.driver_id,
-        });
-      }
-      const onRoute = o.status === 'out_for_delivery' || o.status === 'delivered_pending_confirmation';
-      if (!onRoute) continue;
       const dId = o.assigned_driver_id ?? o.driver_id;
-      if (driverFilter !== 'all' && Number(dId) !== Number(driverFilter)) continue;
-      const gps = driverPin(o);
-      if (!gps) continue;
-      list.push({
-        key: `driver-${o.id}-${dId}`,
-        kind: 'driver',
-        lat: gps.lat,
-        lng: gps.lng,
-        tone: 'driver',
-        label: (o.driver_name || 'Entregador').split(' ')[0],
-        title: `${o.driver_name || 'Entregador'} · pedido #${o.id}`,
-        status: o.status,
-        driverId: dId,
-      });
+      const onRoute = isOnRoute(o.status);
+      const next = isNext(o.status);
+
+      let includeOrder = false;
+      let includeDriverGps = false;
+
+      if (filter === 'all') {
+        includeOrder = true;
+        includeDriverGps = onRoute;
+      } else if (filter === 'next') {
+        includeOrder = next;
+      } else if (filter === 'route') {
+        includeOrder = onRoute;
+        includeDriverGps = onRoute;
+      } else if (filter.startsWith('driver:')) {
+        const fid = Number(filter.slice(7));
+        if (Number(dId) === fid && onRoute) {
+          includeOrder = true;
+          includeDriverGps = true;
+        }
+      }
+
+      if (includeOrder) {
+        const dest = deliveryPin(o);
+        if (dest && nearStore(dest, store)) {
+          list.push({
+            key: `order-${o.id}`,
+            kind: 'order',
+            lat: dest.lat,
+            lng: dest.lng,
+            tone: toneForStatus(o.status),
+            label: `#${o.id}`,
+            title: `${o.customer_full_name || 'Cliente'} · #${o.id}`,
+          });
+        }
+      }
+
+      if (includeDriverGps) {
+        const gps = driverPin(o);
+        if (gps && nearStore(gps, store)) {
+          list.push({
+            key: `driver-${o.id}-${dId}`,
+            kind: 'driver',
+            lat: gps.lat,
+            lng: gps.lng,
+            tone: 'driver',
+            label: (o.driver_name || 'Entregador').split(/\s+/)[0],
+            title: `${o.driver_name || 'Entregador'} · pedido #${o.id}`,
+          });
+        }
+      }
     }
     return list;
-  }, [orders, driverFilter]);
+  }, [orders, filter, storePoint]);
 
   const orderPinsCount = markers.filter((m) => m.kind === 'order').length;
   const driverPinsCount = markers.filter((m) => m.kind === 'driver').length;
 
+  // Mapa + camada fixa da loja (uma vez)
   useEffect(() => {
     if (!wrapRef.current || mapRef.current) return undefined;
-    const oLa = Number(storeOriginLat);
-    const oLn = Number(storeOriginLng);
-    const hasOrigin = Number.isFinite(oLa) && Number.isFinite(oLn);
+
     const map = L.map(wrapRef.current, {
       zoomControl: true,
-      center: hasOrigin ? [oLa, oLn] : DEFAULT_CENTER,
+      center: [storePoint.lat, storePoint.lng],
       zoom: 13,
     });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap',
       maxZoom: 19,
     }).addTo(map);
-    layerRef.current = L.layerGroup().addTo(map);
+
+    storeLayerRef.current = L.layerGroup().addTo(map);
+    dynamicLayerRef.current = L.layerGroup().addTo(map);
     mapRef.current = map;
 
-    const ro = typeof ResizeObserver !== 'undefined'
-      ? new ResizeObserver(() => {
-          map.invalidateSize();
-        })
-      : null;
+    const ro =
+      typeof ResizeObserver !== 'undefined'
+        ? new ResizeObserver(() => {
+            map.invalidateSize();
+          })
+        : null;
     if (ro) ro.observe(wrapRef.current);
-
     requestAnimationFrame(() => map.invalidateSize());
 
     return () => {
       ro?.disconnect();
       map.remove();
       mapRef.current = null;
-      layerRef.current = null;
+      storeLayerRef.current = null;
+      dynamicLayerRef.current = null;
     };
-  }, [storeOriginLat, storeOriginLng]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mapa criado uma vez; origem atualiza no efeito abaixo
+  }, []);
 
+  // Ponto fixo da loja (sempre 1 marcador)
   useEffect(() => {
     const map = mapRef.current;
-    const layer = layerRef.current;
+    const storeLayer = storeLayerRef.current;
+    if (!map || !storeLayer) return;
+
+    storeLayer.clearLayers();
+    const storeMarker = L.marker([storePoint.lat, storePoint.lng], {
+      icon: pinIcon('Loja', 'store'),
+      interactive: false,
+      zIndexOffset: 1000,
+    }).addTo(storeLayer);
+    storeMarker.bindTooltip(storePoint.isFallback ? 'Loja (posição padrão)' : 'Loja', {
+      direction: 'top',
+      offset: [0, -24],
+      permanent: false,
+    });
+
+    // Centraliza na loja quando a origem chega/muda
+    map.setView([storePoint.lat, storePoint.lng], Math.max(map.getZoom(), 13));
+  }, [storePoint]);
+
+  // Demais pontos conforme filtro
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = dynamicLayerRef.current;
     if (!map || !layer) return;
 
     layer.clearLayers();
-    const bounds = [];
-
-    const oLa = Number(storeOriginLat);
-    const oLn = Number(storeOriginLng);
-    if (Number.isFinite(oLa) && Number.isFinite(oLn)) {
-      const store = L.marker([oLa, oLn], {
-        icon: pinIcon('Loja', 'store'),
-        interactive: false,
-      }).addTo(layer);
-      store.bindTooltip('Origem da loja', { direction: 'top', offset: [0, -24] });
-      bounds.push([oLa, oLn]);
-    }
+    const bounds = [[storePoint.lat, storePoint.lng]];
 
     for (const m of markers) {
       const marker = L.marker([m.lat, m.lng], {
@@ -187,12 +265,12 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
     }
 
     if (bounds.length === 1) {
-      map.setView(bounds[0], 14);
-    } else if (bounds.length > 1) {
-      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 15 });
+      map.setView(bounds[0], 13);
+    } else {
+      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
     }
     requestAnimationFrame(() => map.invalidateSize());
-  }, [markers, storeOriginLat, storeOriginLng]);
+  }, [markers, storePoint]);
 
   return (
     <aside className="admin-orders-map card">
@@ -200,26 +278,25 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
         <div>
           <strong>Mapa ao vivo</strong>
           <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.82rem' }}>
-            {orderPinsCount} destino{orderPinsCount === 1 ? '' : 's'} · {driverPinsCount} em rota no mapa
+            Loja fixa · {orderPinsCount} pedido{orderPinsCount === 1 ? '' : 's'} · {driverPinsCount} em rota
           </p>
         </div>
         <div className="field admin-orders-map__filter">
-          <label htmlFor="orders-map-driver-filter">Entregadores em rota</label>
-          <select
-            id="orders-map-driver-filter"
-            value={driverFilter}
-            onChange={(e) => setDriverFilter(e.target.value)}
-          >
-            <option value="all">Todos em rota</option>
+          <label htmlFor="orders-map-filter">Filtro do mapa</label>
+          <select id="orders-map-filter" value={filter} onChange={(e) => setFilter(e.target.value)}>
+            <option value="all">Todos os pedidos</option>
+            <option value="next">Só próximos (recebido / preparo)</option>
+            <option value="route">Só em andamento</option>
             {driversOnRoute.map((d) => (
-              <option key={d.id} value={d.id}>
-                {d.name}
+              <option key={d.id} value={`driver:${d.id}`}>
+                Em rota: {d.name}
               </option>
             ))}
           </select>
         </div>
       </div>
       <div className="admin-orders-map__legend">
+        <span className="admin-orders-map__legend-item admin-orders-map__legend-item--store">Loja</span>
         <span className="admin-orders-map__legend-item admin-orders-map__legend-item--received">Recebido</span>
         <span className="admin-orders-map__legend-item admin-orders-map__legend-item--preparing">Preparo</span>
         <span className="admin-orders-map__legend-item admin-orders-map__legend-item--route">Andamento</span>
@@ -228,7 +305,9 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
       <div ref={wrapRef} className="admin-orders-map__canvas" />
       {orderPinsCount === 0 && driverPinsCount === 0 && (
         <p className="muted admin-orders-map__empty">
-          Sem coordenadas nos pedidos atuais. Quando houver ponto de entrega ou GPS do app, aparecem aqui.
+          {storePoint.isFallback
+            ? 'Cadastre a origem da loja em Entrega para fixar o mapa. Pedidos com GPS válido aparecem pelo filtro.'
+            : 'Nenhum ponto no filtro atual. A loja permanece fixa no mapa.'}
         </p>
       )}
     </aside>

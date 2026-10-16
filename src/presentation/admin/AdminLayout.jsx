@@ -254,7 +254,14 @@ export function AdminLayout({ children }) {
     );
   }
 
-  const shellClass = `admin-shell${collapsed ? ' admin-shell--sidebar-collapsed' : ''}`;
+  const isOrdersPage = /\/admin\/painel\/pedidos\/?$/.test(location.pathname || '');
+  const shellClass = [
+    'admin-shell',
+    collapsed ? 'admin-shell--sidebar-collapsed' : '',
+    isOrdersPage ? 'admin-shell--full-page' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   const sidebarOpenClass =
     isMobileNav && mobileMenuOpen ? ' admin-sidebar--mobile-open' : '';
@@ -393,7 +400,7 @@ export function AdminLayout({ children }) {
           </button>
         </div>
       </aside>
-      <div className="admin-content">
+      <div className={`admin-content${isOrdersPage ? ' admin-content--full' : ''}`}>
         {isMobileNav && (
           <header className="admin-mobile-topbar">
             <button

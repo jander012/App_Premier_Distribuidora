@@ -489,7 +489,7 @@ export function AdminOrdersPage() {
   }
 
   return (
-    <div>
+    <div className={`admin-orders-page${view === 'kanban' ? ' admin-orders-page--live' : ''}`}>
       <div className="admin-toolbar">
         <h1>Pedidos</h1>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
