@@ -18,7 +18,10 @@ L.Icon.Default.mergeOptions({
 
 /** Fallback se a loja ainda não tiver origem cadastrada. */
 const DEFAULT_CENTER = [-15.601, -56.097];
-const NEAR_STORE_KM = 180;
+/** Só mostra pontos razoavelmente perto da loja (cidade / região). */
+const NEAR_STORE_KM = 35;
+const EMPTY_FILTER_ZOOM = 14;
+const WITH_ORDERS_MAX_ZOOM = 15;
 
 function esc(s) {
   return String(s ?? '')
@@ -224,11 +227,10 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mapa criado uma vez; origem atualiza no efeito abaixo
   }, []);
 
-  // Ponto fixo da loja (sempre 1 marcador)
+  // Ponto fixo da loja (sempre 1 marcador) — câmera é controlada no efeito dos pedidos
   useEffect(() => {
-    const map = mapRef.current;
     const storeLayer = storeLayerRef.current;
-    if (!map || !storeLayer) return;
+    if (!storeLayer) return;
 
     storeLayer.clearLayers();
     const storeMarker = L.marker([storePoint.lat, storePoint.lng], {
@@ -241,19 +243,15 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
       offset: [0, -24],
       permanent: false,
     });
-
-    // Centraliza na loja quando a origem chega/muda
-    map.setView([storePoint.lat, storePoint.lng], Math.max(map.getZoom(), 13));
   }, [storePoint]);
 
-  // Demais pontos conforme filtro
+  // Demais pontos conforme filtro + enquadramento da câmera
   useEffect(() => {
     const map = mapRef.current;
     const layer = dynamicLayerRef.current;
     if (!map || !layer) return;
 
     layer.clearLayers();
-    const bounds = [[storePoint.lat, storePoint.lng]];
 
     for (const m of markers) {
       const marker = L.marker([m.lat, m.lng], {
@@ -261,15 +259,27 @@ export function AdminOrdersLiveMap({ orders, storeOriginLat, storeOriginLng }) {
         zIndexOffset: m.kind === 'driver' ? 800 : 400,
       }).addTo(layer);
       marker.bindTooltip(m.title, { direction: 'top', offset: [0, -24] });
-      bounds.push([m.lat, m.lng]);
     }
 
-    if (bounds.length === 1) {
-      map.setView(bounds[0], 13);
-    } else {
-      map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
-    }
-    requestAnimationFrame(() => map.invalidateSize());
+    const applyCamera = () => {
+      map.invalidateSize();
+      // Sem pedidos/GPS no filtro → só a loja, zoom de cidade (2ª foto)
+      if (markers.length === 0) {
+        map.setView([storePoint.lat, storePoint.lng], EMPTY_FILTER_ZOOM, { animate: false });
+        return;
+      }
+      // Com pontos → enquadra loja + pedidos bem dentro da tela (sem afastar demais)
+      const bounds = L.latLngBounds([[storePoint.lat, storePoint.lng]]);
+      for (const m of markers) bounds.extend([m.lat, m.lng]);
+      map.fitBounds(bounds, {
+        paddingTopLeft: [36, 36],
+        paddingBottomRight: [36, 36],
+        maxZoom: WITH_ORDERS_MAX_ZOOM,
+        animate: false,
+      });
+    };
+
+    requestAnimationFrame(applyCamera);
   }, [markers, storePoint]);
 
   return (
