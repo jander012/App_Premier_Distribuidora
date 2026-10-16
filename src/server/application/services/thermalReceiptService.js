@@ -136,14 +136,43 @@ export async function printOrderThermalReceipt(order, items) {
     throw new AppError(502, 'Impressora térmica não respondeu (verifique IP, porta 9100 e rede).');
   }
 
+  const claimCode = String(order.id);
+
   printer.clear();
   printer.alignCenter();
   printer.bold(true);
-  printer.println(`PEDIDO #${order.id}`);
+  printer.println(`PEDIDO #${claimCode}`);
   printer.bold(false);
   if (order.created_at) {
     printer.println(new Date(order.created_at).toLocaleString('pt-BR'));
   }
+  printer.newLine();
+  // QR + código de barras para o entregador bipar / ler no app
+  try {
+    printer.printQR(claimCode, {
+      cellSize: 6,
+      correction: 'M',
+      model: 2,
+    });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('printQR:', e.message);
+  }
+  printer.newLine();
+  try {
+    // CODE128 — bipável por leitores e apps
+    if (typeof printer.code128 === 'function') {
+      printer.code128(claimCode, { width: 'MEDIUM', height: 60, text: 2 });
+    } else {
+      printer.printBarcode(claimCode, 73, { height: 60, width: 2, hriPos: 2 });
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('printBarcode:', e.message);
+  }
+  printer.println(`CODIGO ${claimCode}`);
+  printer.println('Bipe QR ou codigo de barras no app');
+  printer.drawLine();
   writeReceiptBody(printer, order, items);
   printer.cut();
 

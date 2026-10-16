@@ -226,7 +226,34 @@ a {
 .admin-hero-month-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 0 1rem;
+  gap: 0.75rem 1rem;
+}
+
+.admin-hero-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0.5rem;
+}
+
+.admin-hero-preview img {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  max-height: 180px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--surface2, #e5e7eb);
+  background: var(--surface2, #f3f4f6);
+}
+
+.admin-hero-preview img.is-broken {
+  opacity: 0.35;
+  min-height: 72px;
+}
+
+.admin-hero-month-grid .admin-hero-preview img {
+  max-height: 120px;
 }
 
 .store-status-panel {
@@ -929,6 +956,57 @@ a {
   border-radius: 999px;
   font-size: 0.72rem;
   background: var(--surface2);
+}
+
+/* Pedidos admin: Kanban */
+.admin-kanban {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.75rem;
+  align-items: start;
+}
+@media (min-width: 900px) {
+  .admin-kanban {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+.admin-kanban__col {
+  background: var(--surface2, #f3f4f6);
+  border-radius: 12px;
+  padding: 0.65rem;
+  min-height: 280px;
+}
+.admin-kanban__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+  padding: 0 0.25rem;
+}
+.admin-kanban__list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 120px;
+}
+.admin-kanban__card {
+  cursor: grab;
+  padding: 0.75rem;
+  margin: 0;
+}
+.admin-kanban__card.is-busy {
+  opacity: 0.6;
+}
+.admin-kanban__card-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.admin-kanban__card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
 }
 
 /* Pedidos admin: lista em cards */

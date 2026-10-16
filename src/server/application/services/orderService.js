@@ -153,11 +153,11 @@ export async function createOrder(body, opts = {}) {
         payment_method_code, payment_meta,
         delivery_street, delivery_number, delivery_neighborhood, delivery_zip_code,
         delivery_complement, delivery_reference, delivery_latitude, delivery_longitude,
-        customer_full_name, customer_cpf, customer_email, customer_phone
+        customer_full_name, customer_cpf, customer_email, customer_phone, customer_birth_date
       ) VALUES (
         $1, $2, $3, 'received', $4, $5, $6, $7, $8, $9, $10,
         $11, $12,
-        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24
+        $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25
       )`,
       [
         summary.storeId,
@@ -184,6 +184,7 @@ export async function createOrder(body, opts = {}) {
         customer.cpf,
         customer.email,
         phone,
+        customer.birth_date || null,
       ]
     );
     const { rows: orderRows } = await client.query(`SELECT * FROM orders WHERE id = $1`, [orderResult.insertId]);

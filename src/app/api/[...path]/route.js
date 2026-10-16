@@ -88,6 +88,8 @@ const routes = [
   ['POST', '/internal/entregador/orders/:id/gps', [requireInternalApiKey, internalEntregadorController.publishGps]],
   ['GET', '/internal/entregador/orders/:id/gps', [requireInternalApiKey, internalEntregadorController.getGps]],
   ['POST', '/internal/entregador/orders/:id/complete', [requireInternalApiKey, internalEntregadorController.completeOrder]],
+  ['POST', '/internal/entregador/orders/claim', [requireInternalApiKey, internalEntregadorController.claimOrderByCode]],
+  ['POST', '/internal/entregador/orders/:id/release', [requireInternalApiKey, internalEntregadorController.releaseOrder]],
   ['GET', '/internal/entregador/history', [requireInternalApiKey, internalEntregadorController.history]],
   ['POST', '/internal/entregador/sso-link', [requireInternalApiKey, internalEntregadorController.linkSsoLogin]],
   ['GET', '/orders/:id/driver-location', [internalEntregadorController.getPublicOrderGps]],

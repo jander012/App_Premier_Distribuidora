@@ -218,33 +218,8 @@ export async function adminSetDefaultDriver(req, res, next) {
 
 export async function adminAssignOrderDriver(req, res, next) {
   try {
-    const orderId = Number(req.params.id);
-    if (!Number.isFinite(orderId)) throw new AppError(400, 'Pedido inválido');
-    const raw = req.body?.driverId ?? req.body?.driver_id;
-    const driverId = raw === null || raw === '' || raw === undefined ? null : Number(raw);
-    if (driverId != null && !Number.isFinite(driverId)) throw new AppError(400, 'Entregador inválido');
-    const order = await orderRepo.getOrderById(orderId);
-    if (!order || order.store_id !== req.storeId) throw new AppError(404, 'Pedido não encontrado');
-    const run = await driverRepo.assignDriverToOrder(orderId, req.storeId, driverId);
-    if (driverId != null && !run?.driver_id) throw new AppError(404, 'Entregador não encontrado ou inativo');
-    if (driverId != null && run?.driver_id) {
-      try {
-        const { notifyAppEntregadorAssignment } = await import('./internalEntregadorController.js');
-        const driver = await driverRepo.findDriverById(run.driver_id, req.storeId);
-        const email = driver?.external_email || driver?.username;
-        if (email) await notifyAppEntregadorAssignment(email, orderId);
-      } catch (notifyErr) {
-        // eslint-disable-next-line no-console
-        console.warn('notify app entregador:', notifyErr.message);
-      }
-    }
-    res.json({
-      orderId,
-      driverId: run?.driver_id ?? null,
-      driverName: run?.driver_name || null,
-      driverPhone: run?.driver_phone || null,
-      runStatus: run?.status || null,
-    });
+    // Perfis operacionais não alteram entregador — só o app (QR/código) atribui.
+    throw new AppError(403, 'Não é permitido alterar o entregador pelo painel. Use o app do entregador (QR/código).');
   } catch (e) {
     next(e);
   }

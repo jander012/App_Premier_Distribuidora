@@ -57,6 +57,28 @@ function DriverLiveLocation({ orderId, active, status }) {
   );
 }
 
+function formatDuration(ms) {
+  if (ms == null || !Number.isFinite(ms) || ms < 0) return '—';
+  const m = Math.floor(ms / 60000);
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}min`;
+}
+
+function OrderTiming({ order, tick }) {
+  const created = order?.createdAt ? new Date(order.createdAt).getTime() : null;
+  const delivered = order?.deliveredAt ? new Date(order.deliveredAt).getTime() : null;
+  if (!created) return null;
+  const end = delivered || (tick ? tick.getTime() : Date.now());
+  const label = delivered ? 'Tempo até a entrega' : 'Tempo desde o pedido';
+  return (
+    <p style={{ margin: '0.5rem 0 0', fontWeight: 600 }}>
+      {label}: {formatDuration(end - created)}
+      {delivered ? ` · finalizado em ${formatDateTime(order.deliveredAt)}` : null}
+    </p>
+  );
+}
+
 function OrderTimeline({ status, history }) {
   if (status === 'cancelled') {
     const at = history.find((h) => h.status === 'cancelled')?.at;
@@ -207,6 +229,16 @@ export function OrderSuccessPage() {
           Feito em {formatDateTime(order.createdAt)}
           {active && lastUpdate ? ` · atualizado às ${lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}
         </p>
+        <OrderTiming order={order} tick={lastUpdate} />
+        {order.status === 'delivered_pending_confirmation' && (
+          <p style={{ margin: '0.75rem 0 0', fontSize: '0.9rem' }}>
+            Confirme com o entregador usando <strong>ano + dia</strong> do seu aniversário
+            {order.customer?.birthDate
+              ? ` (ex.: ${String(order.customer.birthDate).slice(0, 4)}${String(order.customer.birthDate).slice(8, 10)})`
+              : ' — cadastre a data em Minha conta'}
+            .
+          </p>
+        )}
       </section>
 
       <section className="card order-receipt" style={{ marginTop: '1rem' }}>

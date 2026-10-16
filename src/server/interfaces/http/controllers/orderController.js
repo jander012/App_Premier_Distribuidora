@@ -114,10 +114,22 @@ export function formatOrder(o) {
       cpf: o.customer_cpf,
       email: o.customer_email,
       phone: o.customer_phone,
+      birthDate: o.customer_birth_date || null,
     },
     createdAt: o.created_at,
     updatedAt: o.updated_at ?? null,
+    deliveredAt: o.delivered_at ?? o.delivery_confirmed_at ?? null,
     deliveryConfirmedAt: o.delivery_confirmed_at,
+    /** Tempo decorrido desde a criação (ms) — o cliente calcula ao vivo também. */
+    elapsedMs:
+      o.created_at != null ? Math.max(0, Date.now() - new Date(o.created_at).getTime()) : null,
+    durationMs:
+      o.created_at && (o.delivered_at || o.delivery_confirmed_at)
+        ? Math.max(
+            0,
+            new Date(o.delivered_at || o.delivery_confirmed_at).getTime() - new Date(o.created_at).getTime()
+          )
+        : null,
     ...(o.store_name !== undefined ? { storeName: o.store_name } : {}),
     ...(o.item_count !== undefined ? { itemCount: Number(o.item_count) } : {}),
     ...(o.item_names !== undefined ? { itemNames: o.item_names || '' } : {}),

@@ -198,7 +198,10 @@ export async function countOrdersAdmin({
 
 export async function updateOrderStatus(orderId, status, storeId = null) {
   const params = [orderId, status];
-  let sql = `UPDATE orders SET status = $2, updated_at = now() WHERE id = $1`;
+  let sql =
+    status === 'delivered'
+      ? `UPDATE orders SET status = $2, delivered_at = COALESCE(delivered_at, now()), updated_at = now() WHERE id = $1`
+      : `UPDATE orders SET status = $2, updated_at = now() WHERE id = $1`;
   if (storeId != null) {
     sql += ` AND store_id = $3`;
     params.push(storeId);

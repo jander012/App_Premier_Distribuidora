@@ -11,6 +11,7 @@ const EMPTY_FORM = {
   fullName: '',
   email: '',
   cpf: '',
+  birthDate: '',
   street: '',
   number: '',
   neighborhood: '',
@@ -35,10 +36,12 @@ function maskCpf(cpf) {
 function profileToForm(profile) {
   const c = profile?.customer || {};
   const a = profile?.address || {};
+  const birth = c.birthDate || c.birth_date || '';
   return {
     fullName: c.fullName || '',
     email: c.email || '',
     cpf: c.cpf || '',
+    birthDate: birth ? String(birth).slice(0, 10) : '',
     street: a.street || '',
     number: a.number || '',
     neighborhood: a.neighborhood || '',
@@ -46,6 +49,15 @@ function profileToForm(profile) {
     complement: a.complement || '',
     reference: a.reference || '',
   };
+}
+
+function formatOrderDuration(order) {
+  const created = order?.createdAt ? new Date(order.createdAt).getTime() : null;
+  if (!created) return null;
+  const end = order?.deliveredAt ? new Date(order.deliveredAt).getTime() : Date.now();
+  const m = Math.floor(Math.max(0, end - created) / 60000);
+  if (m < 60) return `${m} min`;
+  return `${Math.floor(m / 60)}h ${m % 60}min`;
 }
 
 function OrderCard({ order }) {
@@ -72,6 +84,11 @@ function OrderCard({ order }) {
         <span className="muted">Total</span>
         <strong>{formatMoney(order.total)}</strong>
       </div>
+      {formatOrderDuration(order) && (
+        <p className="muted" style={{ margin: '0.35rem 0 0', fontSize: '0.85rem' }}>
+          {order.deliveredAt ? 'Duração' : 'Desde o pedido'}: {formatOrderDuration(order)}
+        </p>
+      )}
       <span className="customer-order-card__cta">{active ? 'Acompanhar pedido' : 'Ver detalhes'} ›</span>
     </Link>
   );
@@ -234,6 +251,7 @@ export function CustomerOrdersPage() {
           fullName: form.fullName.trim(),
           email: form.email.trim(),
           cpf: form.cpf.trim(),
+          birthDate: form.birthDate || null,
           ...address,
         });
       } else {
@@ -241,6 +259,7 @@ export function CustomerOrdersPage() {
           fullName: form.fullName.trim(),
           email: form.email.trim(),
           cpf: form.cpf.trim(),
+          birthDate: form.birthDate || null,
         });
         const prev = profile.address;
         const locationChanged =
@@ -361,6 +380,14 @@ export function CustomerOrdersPage() {
                 <dt>CPF</dt>
                 <dd>{maskCpf(customer.cpf)}</dd>
               </div>
+              <div>
+                <dt>Data de nascimento</dt>
+                <dd>
+                  {customer.birthDate
+                    ? new Date(customer.birthDate).toLocaleDateString('pt-BR')
+                    : '— (usada na confirmação de entrega)'}
+                </dd>
+              </div>
               {address && (
                 <div className="customer-profile-list__full">
                   <dt>Endereço de entrega</dt>
@@ -396,6 +423,13 @@ export function CustomerOrdersPage() {
                   <label>CPF</label>
                   <input inputMode="numeric" {...field('cpf')} />
                 </div>
+              </div>
+              <div className="field">
+                <label>Data de nascimento</label>
+                <input type="date" {...field('birthDate')} />
+                <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
+                  Confirmação de entrega: ano + dia (ex. 15/03/1990 → 199015)
+                </p>
               </div>
               <div className="customer-profile-form__row">
                 <div className="field" style={{ flex: 3 }}>

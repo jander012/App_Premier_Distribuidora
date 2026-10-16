@@ -10,26 +10,39 @@ export async function findById(id) {
   return rows[0] || null;
 }
 
-export async function createCustomer({ phone, fullName, cpf, email }) {
+export async function createCustomer({ phone, fullName, cpf, email, birthDate = null }) {
   const result = await query(
-    `INSERT INTO customers (phone, full_name, cpf, email)
-     VALUES ($1, $2, $3, $4)`,
-    [phone, fullName, cpf, email]
+    `INSERT INTO customers (phone, full_name, cpf, email, birth_date)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [phone, fullName, cpf, email, birthDate || null]
   );
   const { rows } = await query(`SELECT * FROM customers WHERE id = $1`, [result.insertId]);
   return rows[0];
 }
 
-export async function updateCustomer(id, { fullName, cpf, email }) {
-  await query(
-    `UPDATE customers SET
-       full_name = COALESCE($2, full_name),
-       cpf = COALESCE($3, cpf),
-       email = COALESCE($4, email),
-       updated_at = now()
-     WHERE id = $1`,
-    [id, fullName, cpf, email]
-  );
+export async function updateCustomer(id, { fullName, cpf, email, birthDate }) {
+  if (birthDate !== undefined) {
+    await query(
+      `UPDATE customers SET
+         full_name = COALESCE($2, full_name),
+         cpf = COALESCE($3, cpf),
+         email = COALESCE($4, email),
+         birth_date = $5,
+         updated_at = now()
+       WHERE id = $1`,
+      [id, fullName, cpf, email, birthDate || null]
+    );
+  } else {
+    await query(
+      `UPDATE customers SET
+         full_name = COALESCE($2, full_name),
+         cpf = COALESCE($3, cpf),
+         email = COALESCE($4, email),
+         updated_at = now()
+       WHERE id = $1`,
+      [id, fullName, cpf, email]
+    );
+  }
   const { rows } = await query(`SELECT * FROM customers WHERE id = $1`, [id]);
   return rows[0];
 }

@@ -66,6 +66,7 @@ export async function createCustomerForVerifiedPhone(phoneDigits, payload) {
     fullName: payload.fullName.trim(),
     cpf: payload.cpf.trim(),
     email: payload.email.trim(),
+    birthDate: payload.birthDate || payload.birth_date || null,
   });
   const addr = await repo.upsertDefaultAddress(c.id, {
     street: payload.street,
@@ -83,11 +84,15 @@ export async function createCustomerForVerifiedPhone(phoneDigits, payload) {
 export async function updateCustomer(id, payload) {
   const existing = await repo.findById(id);
   if (!existing) throw new AppError(404, 'Cliente não encontrado');
-  const c = await repo.updateCustomer(id, {
+  const patch = {
     fullName: 'fullName' in payload ? payload.fullName?.trim() || null : null,
     cpf: 'cpf' in payload ? payload.cpf?.trim() || null : null,
     email: 'email' in payload ? payload.email?.trim() || null : null,
-  });
+  };
+  if ('birthDate' in payload || 'birth_date' in payload) {
+    patch.birthDate = payload.birthDate || payload.birth_date || null;
+  }
+  const c = await repo.updateCustomer(id, patch);
   return c;
 }
 

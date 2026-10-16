@@ -178,6 +178,7 @@ export async function getPublicOrderGps(req, res, next) {
 
 export async function completeOrder(req, res, next) {
   try {
+    const { codesMatch, birthdayConfirmCode } = await import('../../../domain/shared/birthdayConfirmCode.js');
     const driver = await resolveDriverByEmail(req.body?.email);
     const orderId = Number(req.params.id);
     const code = String(req.body.code || '').trim();
@@ -185,31 +186,80 @@ export async function completeOrder(req, res, next) {
     if (!order || order.store_id !== driver.store_id) throw new AppError(404, 'Pedido não encontrado');
     if (order.driver_id && order.driver_id !== driver.id) throw new AppError(403, 'Pedido de outro entregador');
 
-    // Gera código curto se ainda não houver (cliente vê no site / WhatsApp)
-    let shortCode = order.delivery_confirmation_code;
-    if (!shortCode) {
-      shortCode = String(Math.floor(100000 + Math.random() * 900000));
-      await query(`UPDATE orders SET delivery_confirmation_code = $2 WHERE id = $1`, [orderId, shortCode]);
+    const birth = order.customer_birth_date;
+    const expected = birthdayConfirmCode(birth);
+    const digits = String(code || '').replace(/\D/g, '');
+
+    if (!digits) {
+      throw new AppError(400, 'Código inválido. Informe o ano + dia de aniversário do cliente.');
+    }
+    if (!expected) {
+      throw new AppError(400, 'Código inválido. Cliente sem data de nascimento cadastrada.');
+    }
+    if (!codesMatch(code, birth)) {
+      throw new AppError(400, 'Código inválido. Use o ano e o dia de aniversário (AAAADD).');
     }
 
-    if (code && code === shortCode) {
-      await orderService.updateStatus(orderId, 'delivered', { storeId: driver.store_id });
-      const run = await driverRepo.findRunByOrder(orderId);
-      if (run) await driverRepo.updateRunStatus(run.id, driver.id, 'completed');
-      return res.json({ orderId, status: 'delivered', delivered: true, clientConfirmed: true });
-    }
+    await orderService.updateStatus(orderId, 'delivered', { storeId: driver.store_id });
+    const run = await driverRepo.findRunByOrder(orderId);
+    if (run) await driverRepo.updateRunStatus(run.id, driver.id, 'completed');
+    res.json({ orderId, status: 'delivered', delivered: true, clientConfirmed: true });
+  } catch (e) {
+    next(e);
+  }
+}
 
-    if (order.status !== 'delivered' && order.status !== 'delivered_pending_confirmation') {
-      await orderService.updateStatus(orderId, 'delivered_pending_confirmation', { storeId: driver.store_id });
+/** Atribui pedido ao entregador pelo código impresso (id do pedido). Exclusivo. */
+export async function claimOrderByCode(req, res, next) {
+  try {
+    const driver = await resolveDriverByEmail(req.body?.email);
+    const code = String(req.body?.code || req.body?.orderId || '').replace(/\D/g, '');
+    const orderId = Number(code);
+    if (!Number.isFinite(orderId) || orderId <= 0) throw new AppError(400, 'Código do pedido inválido');
+    const order = await orderRepo.getOrderById(orderId);
+    if (!order || order.store_id !== driver.store_id) throw new AppError(404, 'Pedido não encontrado');
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      throw new AppError(409, 'Pedido já finalizado');
     }
-
+    await driverRepo.ensureRunForOrder(orderId, driver.store_id);
+    const existing = await driverRepo.findRunByOrder(orderId);
+    if (existing?.driver_id && Number(existing.driver_id) !== Number(driver.id)) {
+      throw new AppError(409, 'Pedido já atribuído a outro entregador');
+    }
+    const run = await driverRepo.assignDriverToOrder(orderId, driver.store_id, driver.id);
+    if (order.status === 'received' || order.status === 'preparing') {
+      await orderService.updateStatus(orderId, 'out_for_delivery', { storeId: driver.store_id, notify: true });
+    } else if (!order.driver_id) {
+      await query(`UPDATE orders SET driver_id = $2, updated_at = now() WHERE id = $1`, [orderId, driver.id]);
+    }
     res.json({
       orderId,
-      status: 'delivered_pending_confirmation',
-      delivered: false,
-      clientConfirmed: false,
-      confirmationCode: shortCode,
+      runId: run?.id,
+      driverId: driver.id,
+      status: run?.status || 'accepted',
+      claimed: true,
     });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/** Entregador remove o pedido de sua lista (só se não finalizado). */
+export async function releaseOrder(req, res, next) {
+  try {
+    const driver = await resolveDriverByEmail(req.body?.email);
+    const orderId = Number(req.params.id);
+    const order = await orderRepo.getOrderById(orderId);
+    if (!order || order.store_id !== driver.store_id) throw new AppError(404, 'Pedido não encontrado');
+    if (order.status === 'delivered' || order.status === 'cancelled') {
+      throw new AppError(409, 'Pedido já finalizado — não pode ser removido');
+    }
+    const run = await driverRepo.findRunByOrder(orderId);
+    if (run?.driver_id && Number(run.driver_id) !== Number(driver.id)) {
+      throw new AppError(403, 'Pedido de outro entregador');
+    }
+    await driverRepo.assignDriverToOrder(orderId, driver.store_id, null);
+    res.json({ orderId, released: true });
   } catch (e) {
     next(e);
   }

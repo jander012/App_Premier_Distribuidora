@@ -69,6 +69,30 @@ function normalizeHoursDays(list) {
   });
 }
 
+/** Normaliza URL de mídia para exibir no admin (relativa → /api/...). */
+function mediaSrc(url) {
+  const u = String(url || '').trim();
+  if (!u) return '';
+  if (/^https?:\/\//i.test(u) || u.startsWith('blob:') || u.startsWith('data:')) return u;
+  if (u.startsWith('/api/')) return u;
+  if (u.startsWith('/media/')) return `/api${u}`;
+  if (u.startsWith('media/')) return `/api/${u}`;
+  return u;
+}
+
+function HeroImagePreview({ url, label }) {
+  const src = mediaSrc(url);
+  if (!src) return null;
+  return (
+    <div className="admin-hero-preview">
+      <img src={src} alt={label || 'Banner'} loading="lazy" onError={(e) => { e.currentTarget.classList.add('is-broken'); }} />
+      <a className="muted" href={src} target="_blank" rel="noopener noreferrer" style={{ wordBreak: 'break-all', fontSize: '0.78rem' }}>
+        {url}
+      </a>
+    </div>
+  );
+}
+
 function getHeroMonthlyImages(settings) {
   const raw = settings?.hero_monthly_images;
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -453,31 +477,23 @@ export function AdminSettingsPage() {
         <div className="section-label">Banner do cardápio</div>
         <div className="field">
           <label>Imagem padrão do banner</label>
+          <HeroImagePreview url={settings.hero_image_url} label="Banner padrão" />
           <input
             name="hero_image_file"
             type="file"
             accept="image/*"
           />
-          {settings.hero_image_url && (
-            <span className="muted" style={{ wordBreak: 'break-all' }}>
-              Atual: {settings.hero_image_url}
-            </span>
-          )}
         </div>
         <div className="admin-hero-month-grid">
           {HERO_MONTHS.map(([key, label]) => (
             <div className="field" key={key}>
               <label>{label}</label>
+              <HeroImagePreview url={heroMonthlyImages[key]} label={`Banner ${label}`} />
               <input
                 name={`hero_month_file_${key}`}
                 type="file"
                 accept="image/*"
               />
-              {heroMonthlyImages[key] && (
-                <span className="muted" style={{ wordBreak: 'break-all' }}>
-                  Atual: {heroMonthlyImages[key]}
-                </span>
-              )}
             </div>
           ))}
         </div>

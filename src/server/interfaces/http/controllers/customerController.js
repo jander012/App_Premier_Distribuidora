@@ -24,6 +24,7 @@ export async function getMe(req, res, next) {
             fullName: data.customer.full_name,
             cpf: data.customer.cpf,
             email: data.customer.email,
+            birthDate: data.customer.birth_date || null,
           }
         : null,
       address: data.address
@@ -87,6 +88,7 @@ export async function updateMe(req, res, next) {
       fullName: c.full_name,
       cpf: c.cpf,
       email: c.email,
+      birthDate: c.birth_date || null,
     });
   } catch (e) {
     next(e);
