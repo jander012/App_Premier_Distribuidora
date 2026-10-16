@@ -136,6 +136,8 @@ export const env = {
   pickingoIntegrationEnabled: process.env.PICKINGO_INTEGRATION_ENABLED === 'true',
   /** Obrigatório para POST /whatsapp/* e POST /payments/* (exceto fluxo interno via serviço). */
   internalApiKey: process.env.INTERNAL_API_KEY || '',
+  /** Backend do app entregador (Hostinger) — push ao atribuir pedido. */
+  appEntregadorApiBaseUrl: (process.env.APP_ENTREGADOR_API_BASE_URL || '').trim().replace(/\/$/, ''),
   /** Em development ou true, /auth/client/request-code retorna o código OTP na resposta. */
   otpDebugReturn: process.env.OTP_DEBUG_RETURN === 'true' || (process.env.NODE_ENV || 'development') === 'development',
   trustProxy: parseTrustProxy(),

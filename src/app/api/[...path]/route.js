@@ -25,6 +25,7 @@ import * as mediaFileController from '../../../server/interfaces/http/controller
 import * as adminPlatformController from '../../../server/interfaces/http/controllers/adminPlatformController.js';
 import * as healthDbController from '../../../server/interfaces/http/controllers/healthDbController.js';
 import * as driverController from '../../../server/interfaces/http/controllers/driverController.js';
+import * as internalEntregadorController from '../../../server/interfaces/http/controllers/internalEntregadorController.js';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -81,6 +82,14 @@ const routes = [
   ['POST', '/whatsapp/send-menu-link', [requireInternalApiKey, whatsappController.sendMenuLink]],
   ['POST', '/whatsapp/send-order-confirmation', [requireInternalApiKey, whatsappController.sendOrderConfirmation]],
   ['POST', '/whatsapp/send-status-update', [requireInternalApiKey, whatsappController.sendStatusUpdate]],
+  ['GET', '/internal/entregador/runs', [requireInternalApiKey, internalEntregadorController.listRuns]],
+  ['POST', '/internal/entregador/runs/:id/accept', [requireInternalApiKey, internalEntregadorController.acceptRun]],
+  ['PATCH', '/internal/entregador/runs/:id/status', [requireInternalApiKey, internalEntregadorController.updateRunStatus]],
+  ['POST', '/internal/entregador/orders/:id/gps', [requireInternalApiKey, internalEntregadorController.publishGps]],
+  ['GET', '/internal/entregador/orders/:id/gps', [requireInternalApiKey, internalEntregadorController.getGps]],
+  ['POST', '/internal/entregador/orders/:id/complete', [requireInternalApiKey, internalEntregadorController.completeOrder]],
+  ['GET', '/internal/entregador/history', [requireInternalApiKey, internalEntregadorController.history]],
+  ['GET', '/orders/:id/driver-location', [internalEntregadorController.getPublicOrderGps]],
   ['GET', '/admin/auth-mode', [adminController.getAuthMode]],
   ['POST', '/admin/request-code', [adminController.requestAccessCode]],
   ['POST', '/admin/login', [adminController.login]],

@@ -13,6 +13,49 @@ import {
 } from '../utils/orderStatus.js';
 
 const REFRESH_MS = 20_000;
+const GPS_REFRESH_MS = 12_000;
+
+function DriverLiveLocation({ orderId, active, status }) {
+  const [loc, setLoc] = useState(null);
+  const show =
+    active ||
+    status === 'out_for_delivery' ||
+    status === 'delivered_pending_confirmation';
+
+  useEffect(() => {
+    if (!show || !orderId) return undefined;
+    let cancelled = false;
+    async function tick() {
+      try {
+        const res = await api.get(`/orders/${orderId}/driver-location`);
+        if (!cancelled) setLoc(res);
+      } catch {
+        if (!cancelled) setLoc(null);
+      }
+    }
+    void tick();
+    const t = setInterval(tick, GPS_REFRESH_MS);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [orderId, show]);
+
+  if (!show || !loc?.trackingActive || loc.lat == null || loc.lng == null) return null;
+  const maps = `https://www.google.com/maps?q=${loc.lat},${loc.lng}`;
+  return (
+    <div className="order-driver-gps" style={{ marginTop: '0.75rem' }}>
+      <strong>Entregador a caminho</strong>
+      <p className="muted" style={{ margin: '0.25rem 0' }}>
+        Posição ao vivo · {Number(loc.lat).toFixed(5)}, {Number(loc.lng).toFixed(5)}
+        {loc.at ? ` · ${formatDateTime(loc.at)}` : ''}
+      </p>
+      <a href={maps} target="_blank" rel="noreferrer" className="btn btn-ghost">
+        Ver no mapa
+      </a>
+    </div>
+  );
+}
 
 function OrderTimeline({ status, history }) {
   if (status === 'cancelled') {
@@ -159,6 +202,7 @@ export function OrderSuccessPage() {
         </div>
         <p className="order-status-card__desc">{STATUS_DESCRIPTIONS[order.status] || ''}</p>
         <OrderTimeline status={order.status} history={history} />
+        <DriverLiveLocation orderId={order.id} active={active} status={order.status} />
         <p className="muted order-status-card__meta">
           Feito em {formatDateTime(order.createdAt)}
           {active && lastUpdate ? ` · atualizado às ${lastUpdate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}` : ''}

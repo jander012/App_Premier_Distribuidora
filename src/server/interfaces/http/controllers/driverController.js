@@ -227,6 +227,17 @@ export async function adminAssignOrderDriver(req, res, next) {
     if (!order || order.store_id !== req.storeId) throw new AppError(404, 'Pedido não encontrado');
     const run = await driverRepo.assignDriverToOrder(orderId, req.storeId, driverId);
     if (driverId != null && !run?.driver_id) throw new AppError(404, 'Entregador não encontrado ou inativo');
+    if (driverId != null && run?.driver_id) {
+      try {
+        const { notifyAppEntregadorAssignment } = await import('./internalEntregadorController.js');
+        const driver = await driverRepo.findDriverById(run.driver_id, req.storeId);
+        const email = driver?.external_email || driver?.username;
+        if (email) await notifyAppEntregadorAssignment(email, orderId);
+      } catch (notifyErr) {
+        // eslint-disable-next-line no-console
+        console.warn('notify app entregador:', notifyErr.message);
+      }
+    }
     res.json({
       orderId,
       driverId: run?.driver_id ?? null,
