@@ -301,6 +301,9 @@ export function AdminOrdersPage() {
   const [openCardId, setOpenCardId] = useState(null);
   const [drivers, setDrivers] = useState([]);
   const [storeOrigin, setStoreOrigin] = useState({ lat: null, lng: null });
+  const [routeSuggestions, setRouteSuggestions] = useState(null);
+  const [routeHint, setRouteHint] = useState(null);
+  const [activeRouteId, setActiveRouteId] = useState(null);
   const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
 
@@ -377,8 +380,47 @@ export function AdminOrdersPage() {
       const c = colForStatus(o.status);
       if (c) map[c].push(o);
     }
+    // Mais antigo → mais novo em cada coluna
+    for (const key of Object.keys(map)) {
+      map[key].sort(
+        (a, b) =>
+          new Date(a.created_at || a.createdAt || 0) - new Date(b.created_at || b.createdAt || 0) ||
+          (a.id || 0) - (b.id || 0)
+      );
+    }
     return map;
   }, [orders]);
+
+  const receivedFingerprint = useMemo(() => {
+    return (columns.received || [])
+      .map((o) => o.id)
+      .sort((a, b) => a - b)
+      .join(',');
+  }, [columns.received]);
+
+  const loadRouteSuggestions = useCallback(async () => {
+    if (view !== 'kanban') return;
+    try {
+      const res = await api.get('/admin/orders/route-suggestions?maxStops=3', { headers: adminHeaders() });
+      setRouteSuggestions(res);
+      setRouteHint(res.ok === false ? res.error || 'Não foi possível montar as rotas.' : null);
+    } catch (e) {
+      setRouteHint(e.message || 'Falha ao sugerir rotas');
+    }
+  }, [view]);
+
+  // Novo pedido em Recebido → remonta todas as rotas sugeridas
+  useEffect(() => {
+    if (view !== 'kanban') return undefined;
+    void loadRouteSuggestions();
+    return undefined;
+  }, [view, receivedFingerprint, loadRouteSuggestions]);
+
+  const highlightedOrderIds = useMemo(() => {
+    if (activeRouteId == null || !routeSuggestions?.routes) return null;
+    const route = routeSuggestions.routes.find((r) => r.id === activeRouteId);
+    return route ? new Set(route.orderIds) : null;
+  }, [activeRouteId, routeSuggestions]);
 
   async function printOrder(row) {
     setBusyId(row.id);
@@ -524,6 +566,63 @@ export function AdminOrdersPage() {
 
       {view === 'kanban' && (
         <div className="admin-orders-workspace">
+        <div className="admin-orders-main">
+        {(columns.received?.length > 0 || routeSuggestions?.routes?.length > 0 || routeHint) && (
+          <section className="admin-route-suggestions card">
+            <div className="admin-route-suggestions__head">
+              <div>
+                <strong>Rotas sugeridas (Recebido)</strong>
+                <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.82rem' }}>
+                  Âncora = pedido mais antigo · máx. 1,5 km entre entregas · desvio de 500 m no percurso se a
+                  âncora for longe. Recalcula quando chega pedido novo.
+                  {routeSuggestions?.totalDistanceKm != null
+                    ? ` · Total estimado ${Number(routeSuggestions.totalDistanceKm).toFixed(1)} km`
+                    : ''}
+                </p>
+              </div>
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                style={{ width: 'auto' }}
+                onClick={() => loadRouteSuggestions()}
+              >
+                Recalcular
+              </button>
+            </div>
+            {routeHint && <p className="err" style={{ marginBottom: 0 }}>{routeHint}</p>}
+            {routeSuggestions?.unlocated?.length > 0 && (
+              <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
+                Sem GPS: {routeSuggestions.unlocated.map((u) => `#${u.orderId}`).join(', ')}
+              </p>
+            )}
+            <div className="admin-route-suggestions__list">
+              {(routeSuggestions?.routes || []).map((route) => (
+                <button
+                  key={route.id}
+                  type="button"
+                  className={`admin-route-chip${activeRouteId === route.id ? ' is-active' : ''}`}
+                  onClick={() => setActiveRouteId((id) => (id === route.id ? null : route.id))}
+                  title={route.pathLabel}
+                >
+                  <span className="admin-route-chip__title">Rota {route.id}</span>
+                  <span className="admin-route-chip__path">
+                    {route.orderIds.map((oid) =>
+                      oid === route.anchorOrderId ? `#${oid}★` : `#${oid}`
+                    ).join(' · ')}
+                  </span>
+                  <span className="admin-route-chip__meta">
+                    {route.orderIds.length} ped. · {Number(route.distanceKm).toFixed(1)} km · ~{route.estimatedMinutes} min
+                  </span>
+                </button>
+              ))}
+              {!routeHint && (routeSuggestions?.routes || []).length === 0 && columns.received?.length > 0 && (
+                <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
+                  Aguarde — montando rotas…
+                </p>
+              )}
+            </div>
+          </section>
+        )}
         <div className="admin-kanban">
           {KANBAN_COLS.map((col) => (
             <section
@@ -547,10 +646,12 @@ export function AdminOrdersPage() {
                   const currentDriverId = orderDriverId(row);
                   const selectedDriver = drivers.find((d) => Number(d.id) === Number(currentDriverId));
                   const driverPhone = row.driver_phone || selectedDriver?.phone || '';
+                  const inActiveRoute = highlightedOrderIds?.has(row.id);
+                  const dimmed = highlightedOrderIds && col.key === 'received' && !inActiveRoute;
                   return (
                   <article
                     key={row.id}
-                    className={`card admin-kanban__card${busyId === row.id ? ' is-busy' : ''}${isOpen ? ' is-open' : ''}${canOpenOps ? ' is-expandable' : ''}`}
+                    className={`card admin-kanban__card${busyId === row.id ? ' is-busy' : ''}${isOpen ? ' is-open' : ''}${canOpenOps ? ' is-expandable' : ''}${inActiveRoute ? ' is-route-hl' : ''}${dimmed ? ' is-route-dim' : ''}`}
                     draggable={!isOpen}
                     onDragStart={(e) => {
                       if (isOpen) {
@@ -708,6 +809,7 @@ export function AdminOrdersPage() {
               </div>
             </section>
           ))}
+        </div>
         </div>
         <AdminOrdersLiveMap
           orders={orders}

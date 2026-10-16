@@ -103,6 +103,7 @@ const routes = [
   ['POST', '/admin/platform/admins', [...adminPlatform, adminPlatformController.createAdmin]],
   ['PATCH', '/admin/platform/admins/:id/stores', [...adminPlatform, adminPlatformController.patchAdminStores]],
   ['GET', '/admin/orders', [...adminProtected, adminController.listOrders]],
+  ['GET', '/admin/orders/route-suggestions', [...adminProtected, adminController.suggestReceivedRoutes]],
   ['GET', '/admin/orders/:id', [...adminProtected, adminController.getOrderAdmin]],
   ['POST', '/admin/orders/:id/print-thermal', [...adminProtected, adminController.printOrderThermal]],
   ['GET', '/admin/drivers', [...adminProtected, driverController.adminListDrivers]],

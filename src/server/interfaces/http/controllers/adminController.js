@@ -9,6 +9,7 @@ import * as storeHoursRepo from '../../../infrastructure/repositories/storeHours
 import * as orderService from '../../../application/services/orderService.js';
 import * as thermalReceiptService from '../../../application/services/thermalReceiptService.js';
 import * as productImport from '../../../application/services/productImportService.js';
+import { suggestRoutesForReceivedOrders } from '../../../application/services/routeSuggestionService.js';
 import { formatOrder, formatItem } from './orderController.js';
 import { panelUrl, ssoClient, ssoInfo } from '../../../infrastructure/sso/ssoClient.js';
 
@@ -142,6 +143,32 @@ export async function listOrders(req, res, next) {
       limit,
       totalPages: Math.max(1, Math.ceil(total / limit) || 1),
     });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/** Sugere rotas Loja→entregas→Loja com 2–3 pedidos (menor KM). Recalcula a cada chamada. */
+export async function suggestReceivedRoutes(req, res, next) {
+  try {
+    const maxStops = Math.min(Math.max(Number(req.query.maxStops) || 3, 2), 3);
+    const maxRouteKm = Number(req.query.maxRouteKm) > 0 ? Number(req.query.maxRouteKm) : undefined;
+    const [orders, config] = await Promise.all([
+      orderRepo.listOrdersAdmin({
+        storeId: req.storeId,
+        status: 'received',
+        limit: 200,
+        offset: 0,
+      }),
+      settingsRepo.getStoreConfig(req.storeId),
+    ]);
+    const lat = config?.delivery_origin_lat != null ? Number(config.delivery_origin_lat) : null;
+    const lng = config?.delivery_origin_lng != null ? Number(config.delivery_origin_lng) : null;
+    const storeOrigin =
+      Number.isFinite(lat) && Number.isFinite(lng) ? { lat, lng } : null;
+
+    const result = suggestRoutesForReceivedOrders(orders, storeOrigin, { maxStops, maxRouteKm });
+    res.json(result);
   } catch (e) {
     next(e);
   }

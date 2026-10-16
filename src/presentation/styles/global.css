@@ -1081,10 +1081,87 @@ a {
   min-height: 0;
 }
 
+.admin-orders-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
 @media (min-width: 1200px) {
   .admin-orders-workspace {
     grid-template-columns: minmax(0, 1.05fr) minmax(380px, 0.95fr);
   }
+}
+
+.admin-route-suggestions {
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+}
+
+.admin-route-suggestions__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.55rem;
+}
+
+.admin-route-suggestions__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.admin-route-chip {
+  display: grid;
+  gap: 0.15rem;
+  text-align: left;
+  min-width: 140px;
+  max-width: 220px;
+  padding: 0.55rem 0.7rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  background: rgba(15, 23, 42, 0.55);
+  color: var(--text, #f8fafc);
+  cursor: pointer;
+}
+
+.admin-route-chip:hover,
+.admin-route-chip.is-active {
+  border-color: var(--accent, #f97316);
+  background: rgba(249, 115, 22, 0.12);
+}
+
+.admin-route-chip__title {
+  font-size: 0.78rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent, #f97316);
+}
+
+.admin-route-chip__path {
+  font-size: 0.88rem;
+  font-weight: 700;
+}
+
+.admin-route-chip__meta {
+  font-size: 0.75rem;
+  color: var(--muted, #94a3b8);
+}
+
+.admin-kanban__card.is-route-hl {
+  outline: 2px solid var(--accent, #f97316);
+  outline-offset: 1px;
+}
+
+.admin-kanban__card.is-route-dim {
+  opacity: 0.45;
 }
 
 .admin-kanban {
