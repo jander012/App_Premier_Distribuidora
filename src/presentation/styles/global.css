@@ -1090,6 +1090,37 @@ a {
   margin-top: 0.55rem;
 }
 
+.admin-kanban__card.is-expandable {
+  cursor: pointer;
+}
+
+.admin-kanban__card.is-open {
+  cursor: default;
+  outline: 2px solid var(--accent, #fbbc23);
+  outline-offset: 1px;
+}
+
+.admin-kanban__card-panel {
+  margin-top: 0.75rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--surface2, #e5e7eb);
+}
+
+.admin-kanban__addr {
+  margin: 0 0 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.35;
+  font-weight: 600;
+}
+
+.admin-kanban__card-panel .field {
+  margin-bottom: 0;
+}
+
+.admin-kanban__card-panel select {
+  width: 100%;
+}
+
 /* Pedidos admin: lista em cards */
 .admin-orders-cards {
   display: grid;

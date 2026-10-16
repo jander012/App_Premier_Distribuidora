@@ -1,9 +1,20 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from '../navigation.js';
+import { Link, useSearchParams } from '../navigation.js';
 import { api, getClientToken, setClientToken } from '../api/client.js';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';
 import { formatDateTime, formatMoney, isOrderActive, statusLabel } from '../utils/orderStatus.js';
+
+const FIELD_LABELS = {
+  fullName: 'nome',
+  email: 'e-mail',
+  cpf: 'CPF',
+  birthDate: 'data de nascimento',
+  street: 'rua',
+  number: 'número',
+  neighborhood: 'bairro',
+  zipCode: 'CEP',
+};
 
 const ACTIVE_REFRESH_MS = 30_000;
 
@@ -97,6 +108,7 @@ function OrderCard({ order }) {
 export function CustomerOrdersPage() {
   const { storeSlug } = useStore();
   const { phone, setPhone } = useCart();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [orders, setOrders] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -140,20 +152,34 @@ export function CustomerOrdersPage() {
   );
 
   const loadProfile = useCallback(async () => {
-    if (!getClientToken()) return;
+    if (!getClientToken()) return null;
     try {
       const data = await api.clientGet('/customers/me');
       setProfile(data);
       if (data?.phone && !phone) setPhone(data.phone);
+      return data;
     } catch (e) {
       handleAuthError(e);
+      return null;
     }
   }, [handleAuthError, phone, setPhone]);
 
   useEffect(() => {
     if (!sessionReady) return;
     void loadOrders();
-    void loadProfile();
+    void loadProfile().then((data) => {
+      const wantEdit = searchParams?.get('editar') === '1';
+      const incomplete = data && (data.profileComplete === false || !data.customer);
+      if (wantEdit || incomplete) {
+        setForm(profileToForm(data));
+        setEditing(true);
+        if (wantEdit) {
+          const next = new URLSearchParams(searchParams?.toString() || '');
+          next.delete('editar');
+          setSearchParams(next);
+        }
+      }
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReady, storeSlug]);
 
@@ -231,9 +257,13 @@ export function CustomerOrdersPage() {
   async function saveProfile(e) {
     e.preventDefault();
     setSaveMsg(null);
-    const required = ['fullName', 'email', 'cpf', 'street', 'number', 'neighborhood', 'zipCode'];
-    if (required.some((k) => !String(form[k] || '').trim())) {
-      setSaveMsg({ type: 'err', text: 'Preencha nome, e-mail, CPF e o endereço completo (rua, número, bairro e CEP).' });
+    const required = ['fullName', 'email', 'cpf', 'birthDate', 'street', 'number', 'neighborhood', 'zipCode'];
+    const missing = required.filter((k) => !String(form[k] || '').trim());
+    if (missing.length) {
+      setSaveMsg({
+        type: 'err',
+        text: `Preencha todos os dados obrigatórios: ${missing.map((k) => FIELD_LABELS[k] || k).join(', ')}.`,
+      });
       return;
     }
     setBusy(true);
@@ -354,13 +384,23 @@ export function CustomerOrdersPage() {
               Meus dados
             </div>
             {!editing && (
-              <button type="button" className="btn btn-ghost btn-sm" onClick={startEdit}>
-                {customer ? 'Editar' : 'Completar cadastro'}
+              <button type="button" className="btn btn-primary btn-sm" onClick={startEdit}>
+                {customer ? 'Atualizar dados' : 'Completar cadastro'}
               </button>
             )}
           </div>
 
           {saveMsg && <p className={saveMsg.type === 'err' ? 'err' : 'ok-msg'}>{saveMsg.text}</p>}
+
+          {!editing && profile?.profileComplete === false && (
+            <p className="err" style={{ marginBottom: '0.75rem' }}>
+              Cadastro incompleto
+              {Array.isArray(profile.missing) && profile.missing.length
+                ? `: falta ${profile.missing.map((k) => FIELD_LABELS[k] || k).join(', ')}`
+                : ''}
+              . Complete para poder pedir no site.
+            </p>
+          )}
 
           {!editing && customer && (
             <dl className="customer-profile-list">
@@ -385,7 +425,7 @@ export function CustomerOrdersPage() {
                 <dd>
                   {customer.birthDate
                     ? new Date(customer.birthDate).toLocaleDateString('pt-BR')
-                    : '— (usada na confirmação de entrega)'}
+                    : '— (obrigatória para pedir)'}
                 </dd>
               </div>
               {address && (
@@ -404,51 +444,51 @@ export function CustomerOrdersPage() {
 
           {!editing && !customer && profile && (
             <p className="muted" style={{ marginBottom: 0 }}>
-              Ainda não temos seu cadastro. Ele é salvo no seu primeiro pedido, ou você pode completar agora.
+              Ainda não temos seu cadastro. Complete os dados abaixo para poder pedir no site.
             </p>
           )}
 
           {editing && (
             <form className="customer-profile-form" onSubmit={saveProfile}>
               <div className="field">
-                <label>Nome completo</label>
-                <input autoComplete="name" {...field('fullName')} />
+                <label>Nome completo *</label>
+                <input autoComplete="name" required {...field('fullName')} />
               </div>
               <div className="customer-profile-form__row">
                 <div className="field">
-                  <label>E-mail</label>
-                  <input type="email" autoComplete="email" {...field('email')} />
+                  <label>E-mail *</label>
+                  <input type="email" autoComplete="email" required {...field('email')} />
                 </div>
                 <div className="field">
-                  <label>CPF</label>
-                  <input inputMode="numeric" {...field('cpf')} />
+                  <label>CPF *</label>
+                  <input inputMode="numeric" required {...field('cpf')} />
                 </div>
               </div>
               <div className="field">
-                <label>Data de nascimento</label>
-                <input type="date" {...field('birthDate')} />
+                <label>Data de nascimento *</label>
+                <input type="date" required {...field('birthDate')} />
                 <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
-                  Confirmação de entrega: ano + dia (ex. 15/03/1990 → 199015)
+                  Obrigatória. Confirmação de entrega: ano + dia (ex. 15/03/1990 → 199015)
                 </p>
               </div>
               <div className="customer-profile-form__row">
                 <div className="field" style={{ flex: 3 }}>
-                  <label>Rua</label>
-                  <input autoComplete="address-line1" {...field('street')} />
+                  <label>Rua *</label>
+                  <input autoComplete="address-line1" required {...field('street')} />
                 </div>
                 <div className="field" style={{ flex: 1 }}>
-                  <label>Número</label>
-                  <input {...field('number')} />
+                  <label>Número *</label>
+                  <input required {...field('number')} />
                 </div>
               </div>
               <div className="customer-profile-form__row">
                 <div className="field">
-                  <label>Bairro</label>
-                  <input {...field('neighborhood')} />
+                  <label>Bairro *</label>
+                  <input required {...field('neighborhood')} />
                 </div>
                 <div className="field">
-                  <label>CEP</label>
-                  <input inputMode="numeric" autoComplete="postal-code" {...field('zipCode')} />
+                  <label>CEP *</label>
+                  <input inputMode="numeric" autoComplete="postal-code" required {...field('zipCode')} />
                 </div>
               </div>
               <div className="field">

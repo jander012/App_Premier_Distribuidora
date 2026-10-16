@@ -201,31 +201,17 @@ export async function listRunsForAdmin(storeId) {
   return rows;
 }
 
+/**
+ * Garante a corrida do pedido como disponível.
+ * NÃO atribui entregador — só o app (QR/código + login) ou claim explícito.
+ */
 export async function ensureRunForOrder(orderId, storeId) {
   await query(
     `INSERT IGNORE INTO delivery_runs (store_id, order_id, status) VALUES ($1, $2, 'available')`,
     [storeId, orderId]
   );
   const { rows } = await query(`SELECT * FROM delivery_runs WHERE order_id = $1`, [orderId]);
-  let run = rows[0] || null;
-  if (run && !run.driver_id) {
-    const def = await findDefaultDriver(storeId);
-    if (def) {
-      await query(
-        `UPDATE delivery_runs
-            SET driver_id = $2, status = 'accepted', accepted_at = COALESCE(accepted_at, now()), updated_at = now()
-          WHERE id = $1 AND driver_id IS NULL`,
-        [run.id, def.id]
-      );
-      await query(`UPDATE orders SET driver_id = $2, updated_at = now() WHERE id = $1 AND driver_id IS NULL`, [
-        orderId,
-        def.id,
-      ]);
-      const refreshed = await query(`SELECT * FROM delivery_runs WHERE id = $1`, [run.id]);
-      run = refreshed.rows[0] || run;
-    }
-  }
-  return run;
+  return rows[0] || null;
 }
 
 /** Atribui (ou remove) entregador do pedido e da corrida. */

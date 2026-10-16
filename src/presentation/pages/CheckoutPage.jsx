@@ -57,12 +57,14 @@ export function CheckoutPage() {
   const [fullName, setFullName] = useState('');
   const [cpf, setCpf] = useState('');
   const [email, setEmail] = useState('');
+  const [birthDate, setBirthDate] = useState('');
   const [street, setStreet] = useState('');
   const [number, setNumber] = useState('');
   const [neighborhood, setNeighborhood] = useState('');
   const [zipCode, setZipCode] = useState('');
   const [complement, setComplement] = useState('');
   const [reference, setReference] = useState('');
+  const [profileComplete, setProfileComplete] = useState(null);
 
   /** Ponto de entrega (obrigatório quando a loja definiu polígono). */
   const [deliveryPin, setDeliveryPin] = useState(null);
@@ -93,6 +95,7 @@ export function CheckoutPage() {
           setFullName(data.customer.fullName || '');
           setCpf(data.customer.cpf || '');
           setEmail(data.customer.email || '');
+          setBirthDate(data.customer.birthDate ? String(data.customer.birthDate).slice(0, 10) : '');
         }
         if (data.address) {
           setStreet(data.address.street || '');
@@ -110,6 +113,7 @@ export function CheckoutPage() {
             }
           }
         }
+        setProfileComplete(data.profileComplete !== false);
       } catch {
         /* sem cadastro ainda */
       } finally {
@@ -291,11 +295,33 @@ export function CheckoutPage() {
     }
   }
 
+  const missingCheckoutFields = useMemo(() => {
+    const checks = [
+      ['fullName', fullName, 'nome'],
+      ['cpf', cpf, 'CPF'],
+      ['email', email, 'e-mail'],
+      ['birthDate', birthDate, 'data de nascimento'],
+      ['street', street, 'rua'],
+      ['number', number, 'número'],
+      ['neighborhood', neighborhood, 'bairro'],
+      ['zipCode', zipCode, 'CEP'],
+    ];
+    return checks.filter(([, v]) => !String(v || '').trim()).map(([, , label]) => label);
+  }, [fullName, cpf, email, birthDate, street, number, neighborhood, zipCode]);
+
+  const canPlaceOrder = missingCheckoutFields.length === 0;
+
   async function submit(e) {
     e.preventDefault();
     setSubmitErr(null);
     if (!getClientToken()) {
       setSubmitErr('Confirme o código enviado ao seu celular');
+      return;
+    }
+    if (!canPlaceOrder) {
+      setSubmitErr(
+        `Preencha todos os dados cadastrais antes de pedir: ${missingCheckoutFields.join(', ')}.`
+      );
       return;
     }
     const paymentMeta =
@@ -330,7 +356,7 @@ export function CheckoutPage() {
         paymentMethodCode,
         paymentMeta,
         ...ageConfirmedPayload(readAgeGateDecision(storeSlug)),
-        customer: { fullName, cpf, email },
+        customer: { fullName, cpf, email, birthDate },
         address: {
           street,
           number,
@@ -489,12 +515,30 @@ export function CheckoutPage() {
 
       {sessionReady && (
         <form onSubmit={submit} className="card">
-          <div className="section-label" style={{ marginTop: 0 }}>
-            Seus dados
+          <div className="row-between" style={{ alignItems: 'flex-start', gap: '0.75rem' }}>
+            <div>
+              <div className="section-label" style={{ marginTop: 0 }}>
+                Seus dados
+              </div>
+              <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0, marginBottom: 0 }}>
+                Todos os campos obrigatórios precisam estar preenchidos para finalizar o pedido.
+              </p>
+            </div>
+            <Link to="/meus-pedidos?editar=1" className="btn btn-ghost btn-sm" style={{ width: 'auto', flexShrink: 0 }}>
+              Atualizar dados
+            </Link>
           </div>
-          <p className="muted" style={{ fontSize: '0.85rem', marginTop: 0 }}>
-            Celular verificado. Os dados abaixo são salvos para os próximos pedidos.
-          </p>
+          {!canPlaceOrder && !loadingProfile && (
+            <p className="err" style={{ marginTop: '0.75rem' }}>
+              Cadastro incompleto: falta {missingCheckoutFields.join(', ')}. Preencha abaixo ou use{' '}
+              <Link to="/meus-pedidos?editar=1">Atualizar dados</Link>.
+            </p>
+          )}
+          {profileComplete === false && canPlaceOrder && (
+            <p className="muted" style={{ fontSize: '0.85rem' }}>
+              Revise os dados e confirme — eles serão salvos no seu cadastro.
+            </p>
+          )}
           {loadingProfile && <p className="muted">Carregando seus dados…</p>}
           <div className="field">
             <label>Nome completo *</label>
@@ -507,6 +551,13 @@ export function CheckoutPage() {
           <div className="field">
             <label>E-mail *</label>
             <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required />
+          </div>
+          <div className="field">
+            <label>Data de nascimento *</label>
+            <input type="date" value={birthDate} onChange={(e) => setBirthDate(e.target.value)} required />
+            <p className="muted" style={{ margin: '0.25rem 0 0', fontSize: '0.8rem' }}>
+              Usada na confirmação de entrega (ano + dia, ex. 15/03/1990 → 199015).
+            </p>
           </div>
 
           <div className="section-label">Endereço de entrega</div>
@@ -709,8 +760,12 @@ export function CheckoutPage() {
 
           {submitErr && <p className="err">{submitErr}</p>}
 
-          <button type="submit" className="btn btn-primary" disabled={busy || deliveryPinIsOutside}>
-            {busy ? 'Enviando…' : 'Confirmar pedido'}
+          <button
+            type="submit"
+            className="btn btn-primary"
+            disabled={busy || deliveryPinIsOutside || !canPlaceOrder}
+          >
+            {busy ? 'Enviando…' : canPlaceOrder ? 'Confirmar pedido' : 'Complete o cadastro para pedir'}
           </button>
         </form>
       )}

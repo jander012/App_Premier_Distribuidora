@@ -63,6 +63,59 @@ function orderCustomerPhone(row) {
   return row.customer_phone || row.customer?.phone || '';
 }
 
+function orderDriverId(row) {
+  const id = row.assigned_driver_id ?? row.driver_id ?? row.driverId;
+  return id != null && Number.isFinite(Number(id)) ? Number(id) : null;
+}
+
+function orderDeliveryLatLng(row) {
+  const lat = Number(row.delivery_latitude ?? row.delivery?.latitude);
+  const lng = Number(row.delivery_longitude ?? row.delivery?.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  return { lat, lng };
+}
+
+function orderLocationUrl(row) {
+  const pin = orderDeliveryLatLng(row);
+  if (pin) return `https://www.google.com/maps?q=${pin.lat},${pin.lng}`;
+  const parts = [
+    row.delivery_street || row.delivery?.street,
+    row.delivery_number || row.delivery?.number,
+    row.delivery_neighborhood || row.delivery?.neighborhood,
+    row.delivery_zip_code || row.delivery?.zipCode,
+  ]
+    .filter((x) => x != null && String(x).trim() !== '')
+    .join(', ');
+  if (!parts) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts)}`;
+}
+
+function orderAddressLabel(row) {
+  const parts = [
+    [row.delivery_street || row.delivery?.street, row.delivery_number || row.delivery?.number]
+      .filter(Boolean)
+      .join(', '),
+    row.delivery_neighborhood || row.delivery?.neighborhood,
+    row.delivery_complement || row.delivery?.complement,
+  ].filter((x) => x != null && String(x).trim() !== '');
+  return parts.join(' · ') || 'Endereço não informado';
+}
+
+function digitsPhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
+}
+
+function whatsappLocationHref(phone, order) {
+  const loc = orderLocationUrl(order);
+  const addr = orderAddressLabel(order);
+  const text = loc
+    ? `Pedido #${order.id} — localização da entrega:\n${addr}\n${loc}`
+    : `Pedido #${order.id} — endereço:\n${addr}`;
+  const digits = digitsPhone(phone);
+  const base = digits ? `https://wa.me/55${digits.replace(/^55/, '')}` : 'https://wa.me/';
+  return `${base}?text=${encodeURIComponent(text)}`;
+}
+
 function orderClaimCode(orderId) {
   return String(orderId);
 }
@@ -244,12 +297,23 @@ export function AdminOrdersPage() {
   const [err, setErr] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [dragId, setDragId] = useState(null);
+  const [openCardId, setOpenCardId] = useState(null);
+  const [drivers, setDrivers] = useState([]);
   const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 30000);
     return () => clearInterval(t);
+  }, []);
+
+  const loadDrivers = useCallback(async () => {
+    try {
+      const res = await api.get('/admin/drivers?sync=0', { headers: adminHeaders() });
+      setDrivers((res.drivers || []).filter((d) => d.active !== false));
+    } catch {
+      /* lista opcional */
+    }
   }, []);
 
   const loadKanban = useCallback(async () => {
@@ -282,12 +346,13 @@ export function AdminOrdersPage() {
   useEffect(() => {
     if (view === 'kanban') {
       loadKanban();
+      loadDrivers();
       pollRef.current = setInterval(loadKanban, 15000);
       return () => clearInterval(pollRef.current);
     }
     loadHistory();
     return undefined;
-  }, [view, loadKanban, loadHistory]);
+  }, [view, loadKanban, loadHistory, loadDrivers]);
 
   const columns = useMemo(() => {
     const map = { received: [], preparing: [], andamento: [] };
@@ -376,6 +441,36 @@ export function AdminOrdersPage() {
     setDragId(null);
   }
 
+  async function assignDriver(orderId, driverId) {
+    setBusyId(orderId);
+    setErr(null);
+    try {
+      const res = await api.patch(
+        `/admin/orders/${orderId}/driver`,
+        { driverId: driverId == null || driverId === '' ? null : Number(driverId) },
+        { headers: adminHeaders() }
+      );
+      setOrders((prev) =>
+        prev.map((o) =>
+          Number(o.id) === Number(orderId)
+            ? {
+                ...o,
+                driver_id: res.driverId,
+                assigned_driver_id: res.driverId,
+                driver_name: res.driverName,
+                driver_phone: res.driverPhone,
+              }
+            : o
+        )
+      );
+    } catch (e) {
+      setErr(e.message || 'Não foi possível trocar o entregador');
+      loadKanban();
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   return (
     <div>
       <div className="admin-toolbar">
@@ -404,8 +499,8 @@ export function AdminOrdersPage() {
       </div>
 
       <p className="muted" style={{ marginTop: 0 }}>
-        Ao mudar de coluna (arrastar ou botão), o status do pedido atualiza junto. O entregador é definido só pelo app
-        (QR/código). Finalizados ficam no histórico.
+        Clique no card (Recebido / Em preparo) para abrir: enviar localização e trocar entregador. Em andamento a
+        atribuição fica pelo app (QR/código). Arraste entre colunas para mudar o status.
       </p>
 
       {err && <p className="err">{err}</p>}
@@ -428,18 +523,32 @@ export function AdminOrdersPage() {
                   const created = orderCreatedAt(row);
                   const name = orderCustomerName(row);
                   const phone = orderCustomerPhone(row);
+                  const canOpenOps = col.key === 'received' || col.key === 'preparing';
+                  const isOpen = openCardId === row.id;
+                  const locUrl = orderLocationUrl(row);
+                  const currentDriverId = orderDriverId(row);
+                  const selectedDriver = drivers.find((d) => Number(d.id) === Number(currentDriverId));
+                  const driverPhone = row.driver_phone || selectedDriver?.phone || '';
                   return (
                   <article
                     key={row.id}
-                    className={`card admin-kanban__card${busyId === row.id ? ' is-busy' : ''}`}
-                    draggable
+                    className={`card admin-kanban__card${busyId === row.id ? ' is-busy' : ''}${isOpen ? ' is-open' : ''}${canOpenOps ? ' is-expandable' : ''}`}
+                    draggable={!isOpen}
                     onDragStart={(e) => {
+                      if (isOpen) {
+                        e.preventDefault();
+                        return;
+                      }
                       setDragId(row.id);
                       e.dataTransfer.setData('text/order-id', String(row.id));
                       e.dataTransfer.setData('text/plain', String(row.id));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
                     onDragEnd={() => setDragId(null)}
+                    onClick={() => {
+                      if (!canOpenOps) return;
+                      setOpenCardId((id) => (id === row.id ? null : row.id));
+                    }}
                   >
                     <div className="admin-kanban__card-top">
                       <strong>
@@ -460,8 +569,13 @@ export function AdminOrdersPage() {
                     </p>
                     <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.78rem' }}>
                       {row.driver_name ? row.driver_name : 'Sem entregador'}
+                      {canOpenOps ? (isOpen ? ' · fechar' : ' · abrir') : ''}
                     </p>
-                    <div className="admin-kanban__card-actions">
+                    <div
+                      className="admin-kanban__card-actions"
+                      onClick={(e) => e.stopPropagation()}
+                      onMouseDown={(e) => e.stopPropagation()}
+                    >
                       <button
                         type="button"
                         className="btn btn-primary"
@@ -516,6 +630,60 @@ export function AdminOrdersPage() {
                         </button>
                       )}
                     </div>
+
+                    {canOpenOps && isOpen && (
+                      <div
+                        className="admin-kanban__card-panel"
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
+                      >
+                        <p className="admin-kanban__addr">{orderAddressLabel(row)}</p>
+                        <div className="admin-kanban__card-actions">
+                          {locUrl ? (
+                            <a
+                              className="btn btn-ghost"
+                              style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.82rem' }}
+                              href={locUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              Abrir mapa
+                            </a>
+                          ) : null}
+                          <a
+                            className="btn btn-primary"
+                            style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.82rem' }}
+                            href={whatsappLocationHref(driverPhone || phone, row)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            Enviar localização
+                          </a>
+                        </div>
+                        <div className="field" style={{ margin: '0.65rem 0 0' }}>
+                          <label>Entregador</label>
+                          <select
+                            value={currentDriverId != null ? String(currentDriverId) : ''}
+                            disabled={busyId === row.id}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              assignDriver(row.id, v === '' ? null : Number(v));
+                            }}
+                          >
+                            <option value="">Sem entregador</option>
+                            {drivers.map((d) => (
+                              <option key={d.id} value={d.id}>
+                                {d.name}
+                                {d.phone ? ` · ${d.phone}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="muted" style={{ margin: '0.3rem 0 0', fontSize: '0.75rem' }}>
+                            Troca liberada só em Recebido / Em preparo. Depois disso, o app (QR) assume.
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </article>
                   );
                 })}

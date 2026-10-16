@@ -216,10 +216,40 @@ export async function adminSetDefaultDriver(req, res, next) {
   }
 }
 
+/** Operador da loja pode atribuir/trocar entregador só em Recebido ou Em preparo. */
 export async function adminAssignOrderDriver(req, res, next) {
   try {
-    // Perfis operacionais não alteram entregador — só o app (QR/código) atribui.
-    throw new AppError(403, 'Não é permitido alterar o entregador pelo painel. Use o app do entregador (QR/código).');
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId) || orderId <= 0) throw new AppError(400, 'Pedido inválido');
+    const order = await orderRepo.getOrderById(orderId);
+    if (!order || order.store_id !== req.storeId) throw new AppError(404, 'Pedido não encontrado');
+    if (order.status !== 'received' && order.status !== 'preparing') {
+      throw new AppError(
+        403,
+        'Só é possível trocar o entregador enquanto o pedido está em Recebido ou Em preparo. Depois use o app (QR/código).'
+      );
+    }
+
+    const raw = req.body?.driverId ?? req.body?.driver_id;
+    const clear = raw === null || raw === '' || raw === undefined;
+    const driverId = clear ? null : Number(raw);
+    if (!clear && !Number.isFinite(driverId)) throw new AppError(400, 'Entregador inválido');
+
+    if (driverId != null) {
+      const driver = await driverRepo.findDriverById(driverId, req.storeId);
+      if (!driver || driver.active === false) throw new AppError(404, 'Entregador não encontrado ou inativo');
+    }
+
+    const run = await driverRepo.assignDriverToOrder(orderId, req.storeId, driverId);
+    const refreshed = await orderRepo.getOrderById(orderId);
+    res.json({
+      orderId,
+      status: refreshed?.status || order.status,
+      driverId: run?.driver_id ?? null,
+      driverName: run?.driver_name || null,
+      driverPhone: run?.driver_phone || null,
+      runStatus: run?.status || null,
+    });
   } catch (e) {
     next(e);
   }

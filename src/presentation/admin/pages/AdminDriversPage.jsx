@@ -64,7 +64,7 @@ export function AdminDriversPage() {
     try {
       const res = await api.put('/admin/drivers/default', { driverId }, { headers: adminHeaders() });
       setDrivers(Array.isArray(res.drivers) ? res.drivers : []);
-      setMsg('Entregador padrão atualizado. Novos pedidos usam este cadastro.');
+      setMsg('Entregador padrão atualizado (destaque no painel). Pedidos só são atribuídos após leitura do QR/código no app com o login do entregador.');
     } catch (ex) {
       setErr(ex.message);
     } finally {
@@ -163,8 +163,8 @@ export function AdminDriversPage() {
             <p style={{ marginTop: 0 }}>
               Os entregadores vêm do mesmo cadastro do sistema Premier (
               <strong>enviar_dados_entregador</strong>
-              ). Aqui você escolhe o padrão, vincula logins SSO (pode ser mais de um e-mail por pessoa) e usa nos
-              pedidos.
+              ). Vincule os logins SSO (pode ser mais de um e-mail por pessoa). O pedido só fica com um entregador
+              depois que ele lê o QR/código no app logado — o “padrão” não atribui sozinho.
             </p>
             {cadastroUrl && (
               <p style={{ margin: '0 0 0.75rem' }}>

@@ -43,20 +43,23 @@ async function resolveDriverByEmail(email) {
   const bySso = await driverRepo.findDriverBySsoEmail(normalized);
   if (bySso) return bySso;
 
-  // 2) E-mail principal do espelho Premier / cadastro
+  // 2) E-mail principal do espelho Premier / cadastro (match exato do login)
   const { rows } = await query(
-    `SELECT * FROM delivery_drivers WHERE lower(external_email) = $1 AND active = true ORDER BY is_default DESC, id ASC LIMIT 1`,
+    `SELECT * FROM delivery_drivers WHERE lower(external_email) = $1 AND active = true ORDER BY id ASC LIMIT 1`,
     [normalized]
   );
   if (rows[0]) return rows[0];
 
-  // 3) Username local
-  const byUser = await query(
-    `SELECT * FROM delivery_drivers WHERE lower(username) = $1 AND active = true LIMIT 1`,
-    [normalized.split('@')[0]]
-  );
-  if (!byUser.rows[0]) throw new AppError(404, 'Entregador não encontrado na loja');
-  return byUser.rows[0];
+  // 3) Username local — só se o login digitado NÃO for e-mail (evita pegar outro entregador pelo prefixo)
+  if (!normalized.includes('@')) {
+    const byUser = await query(
+      `SELECT * FROM delivery_drivers WHERE lower(username) = $1 AND active = true ORDER BY id ASC LIMIT 1`,
+      [normalized]
+    );
+    if (byUser.rows[0]) return byUser.rows[0];
+  }
+
+  throw new AppError(404, 'Entregador não encontrado para este login. Confira o e-mail usado no app.');
 }
 
 export async function listRuns(req, res, next) {
@@ -209,10 +212,12 @@ export async function completeOrder(req, res, next) {
   }
 }
 
-/** Atribui pedido ao entregador pelo código impresso (id do pedido). Exclusivo. */
+/** Atribui pedido ao entregador pelo código impresso (id do pedido). Exclusivo — exige login do app. */
 export async function claimOrderByCode(req, res, next) {
   try {
-    const driver = await resolveDriverByEmail(req.body?.email);
+    const loginEmail = String(req.body?.email || '').trim().toLowerCase();
+    if (!loginEmail) throw new AppError(400, 'Informe o login (e-mail) do entregador no app');
+    const driver = await resolveDriverByEmail(loginEmail);
     const code = String(req.body?.code || req.body?.orderId || '').replace(/\D/g, '');
     const orderId = Number(code);
     if (!Number.isFinite(orderId) || orderId <= 0) throw new AppError(400, 'Código do pedido inválido');
@@ -226,17 +231,23 @@ export async function claimOrderByCode(req, res, next) {
     if (existing?.driver_id && Number(existing.driver_id) !== Number(driver.id)) {
       throw new AppError(409, 'Pedido já atribuído a outro entregador');
     }
+    // Atribuição só aqui, com o entregador resolvido pelo login digitado no app
     const run = await driverRepo.assignDriverToOrder(orderId, driver.store_id, driver.id);
+    if (!run || Number(run.driver_id) !== Number(driver.id)) {
+      throw new AppError(409, 'Não foi possível atribuir o pedido a este login');
+    }
     if (order.status === 'received' || order.status === 'preparing') {
       await orderService.updateStatus(orderId, 'out_for_delivery', { storeId: driver.store_id, notify: true });
-    } else if (!order.driver_id) {
+    } else if (!order.driver_id || Number(order.driver_id) !== Number(driver.id)) {
       await query(`UPDATE orders SET driver_id = $2, updated_at = now() WHERE id = $1`, [orderId, driver.id]);
     }
     res.json({
       orderId,
-      runId: run?.id,
+      runId: run.id,
       driverId: driver.id,
-      status: run?.status || 'accepted',
+      driverName: driver.name,
+      login: loginEmail,
+      status: run.status || 'accepted',
       claimed: true,
     });
   } catch (e) {

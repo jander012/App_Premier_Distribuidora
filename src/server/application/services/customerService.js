@@ -2,10 +2,19 @@ import * as repo from '../../infrastructure/repositories/customerRepository.js';
 import { normalizePhone } from '../../domain/shared/phone.js';
 import { AppError } from '../../domain/shared/AppError.js';
 
-const REQUIRED = ['fullName', 'cpf', 'email', 'street', 'number', 'neighborhood', 'zipCode'];
+const REQUIRED = ['fullName', 'cpf', 'email', 'birthDate', 'street', 'number', 'neighborhood', 'zipCode'];
+
+function hasBirthDate(customer) {
+  return Boolean(customer?.birth_date || customer?.birthDate);
+}
 
 export function isCustomerComplete(customer, address) {
-  if (!customer?.full_name?.trim() || !customer?.cpf?.trim() || !customer?.email?.trim()) {
+  if (
+    !customer?.full_name?.trim() ||
+    !customer?.cpf?.trim() ||
+    !customer?.email?.trim() ||
+    !hasBirthDate(customer)
+  ) {
     return false;
   }
   if (
@@ -24,6 +33,7 @@ export function missingFields(customer, address) {
   if (!customer?.full_name?.trim()) m.push('fullName');
   if (!customer?.cpf?.trim()) m.push('cpf');
   if (!customer?.email?.trim()) m.push('email');
+  if (!hasBirthDate(customer)) m.push('birthDate');
   if (!address?.street?.trim()) m.push('street');
   if (!address?.number?.trim()) m.push('number');
   if (!address?.neighborhood?.trim()) m.push('neighborhood');
@@ -35,7 +45,15 @@ export async function getByPhone(rawPhone) {
   const phone = normalizePhone(rawPhone);
   if (!phone) throw new AppError(400, 'Telefone inválido');
   const customer = await repo.findByPhone(phone);
-  if (!customer) return { phone, customer: null, address: null };
+  if (!customer) {
+    return {
+      phone,
+      customer: null,
+      address: null,
+      complete: false,
+      missing: [...REQUIRED],
+    };
+  }
   const address = await repo.getDefaultAddress(customer.id);
   return {
     phone,
@@ -56,7 +74,13 @@ export async function createCustomer(payload) {
 export async function createCustomerForVerifiedPhone(phoneDigits, payload) {
   const existing = await repo.findByPhone(phoneDigits);
   if (existing) throw new AppError(409, 'Cliente já cadastrado com este telefone');
-  for (const k of ['fullName', 'cpf', 'email', 'street', 'number', 'neighborhood', 'zipCode']) {
+  for (const k of REQUIRED) {
+    if (k === 'birthDate') {
+      if (!(payload.birthDate || payload.birth_date)) {
+        throw new AppError(400, `Campo obrigatório: ${k}`);
+      }
+      continue;
+    }
     if (!payload[k]?.toString?.().trim?.()) {
       throw new AppError(400, `Campo obrigatório: ${k}`);
     }
@@ -118,6 +142,7 @@ export async function ensureCustomerForOrder(phoneDigits, body) {
       fullName: custInput.fullName || body.fullName,
       cpf: custInput.cpf || body.cpf,
       email: custInput.email || body.email,
+      birthDate: custInput.birthDate || custInput.birth_date || body.birthDate || body.birth_date,
       street: addrInput.street || body.street,
       number: addrInput.number || body.number,
       neighborhood: addrInput.neighborhood || body.neighborhood,
@@ -133,7 +158,9 @@ export async function ensureCustomerForOrder(phoneDigits, body) {
           ? merged.fullName
           : k === 'zipCode'
             ? merged.zipCode
-            : merged[k];
+            : k === 'birthDate'
+              ? merged.birthDate
+              : merged[k];
       if (!key?.toString?.().trim?.()) {
         throw new AppError(400, 'Dados obrigatórios incompletos para primeiro pedido', {
           missing: [k],
@@ -145,6 +172,7 @@ export async function ensureCustomerForOrder(phoneDigits, body) {
       fullName: merged.fullName.trim(),
       cpf: merged.cpf.trim(),
       email: merged.email.trim(),
+      birthDate: merged.birthDate,
     });
     const address = await repo.upsertDefaultAddress(customer.id, {
       street: merged.street,
@@ -159,11 +187,19 @@ export async function ensureCustomerForOrder(phoneDigits, body) {
     return { customer, address };
   }
 
+  const birthPatch =
+    custInput.birthDate !== undefined || custInput.birth_date !== undefined
+      ? { birthDate: custInput.birthDate || custInput.birth_date || null }
+      : body.birthDate !== undefined || body.birth_date !== undefined
+        ? { birthDate: body.birthDate || body.birth_date || null }
+        : {};
+
   await repo.updateCustomer(customer.id, {
     fullName:
       custInput.fullName !== undefined ? custInput.fullName.trim() || null : null,
     cpf: custInput.cpf !== undefined ? custInput.cpf.trim() || null : null,
     email: custInput.email !== undefined ? custInput.email.trim() || null : null,
+    ...birthPatch,
   });
   customer = await repo.findById(customer.id);
 
