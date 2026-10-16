@@ -140,7 +140,7 @@ function HomeHeroProjection({ url, label, onClose }) {
           <section className="menu-hero" style={style}>
             <div>
               <span className="menu-hero__eyebrow">Delivery Premier</span>
-              <h1 className="page-title">Cardápio</h1>
+              <h1 className="page-title">Portfólio</h1>
               <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
             </div>
             <div className="menu-hero__meta">
