@@ -273,10 +273,32 @@ a {
 .store-hours-row__times input[type='time'] {
   min-height: 36px;
   border-radius: 8px;
-  border: 1px solid var(--surface2);
-  background: #fff;
-  color: var(--text);
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  caret-color: #0f172a;
+  color-scheme: light;
   padding: 0.25rem 0.45rem;
+  font-weight: 600;
+}
+
+.store-hours-row__times input[type='time']::-webkit-calendar-picker-indicator {
+  filter: none;
+  opacity: 0.75;
+  cursor: pointer;
+}
+
+.store-hours-row__times input[type='time']::-webkit-datetime-edit,
+.store-hours-row__times input[type='time']::-webkit-datetime-edit-fields-wrapper,
+.store-hours-row__times input[type='time']::-webkit-datetime-edit-hour-field,
+.store-hours-row__times input[type='time']::-webkit-datetime-edit-minute-field,
+.store-hours-row__times input[type='time']::-webkit-datetime-edit-ampm-field,
+.store-hours-row__times input[type='time']::-webkit-datetime-edit-text {
+  color: #0f172a;
+}
+
+.store-hours-row .muted {
+  color: #cbd5e1;
 }
 
 @media (max-width: 640px) {
