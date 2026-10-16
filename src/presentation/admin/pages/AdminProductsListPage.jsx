@@ -2,6 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '../../navigation.js';
 import { api, apiBase } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
+import { readListSession, restoreListScroll, writeListSession } from '../../utils/listSession.js';
+
+const LIST_KEY = 'admin-products';
 
 function excerpt(text, max = 100) {
   const t = String(text || '').trim();
@@ -9,15 +12,27 @@ function excerpt(text, max = 100) {
   return `${t.slice(0, max).trim()}…`;
 }
 
+function initialListState() {
+  const saved = readListSession(LIST_KEY);
+  return {
+    page: Math.max(1, Number(saved?.page) || 1),
+    q: typeof saved?.q === 'string' ? saved.q : '',
+    scrollY: Number(saved?.scrollY) || 0,
+  };
+}
+
 export function AdminProductsListPage() {
+  const boot = useRef(initialListState());
   const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 1 });
-  const [page, setPage] = useState(1);
-  const [q, setQ] = useState('');
-  const [qDebounced, setQDebounced] = useState('');
+  const [page, setPage] = useState(boot.current.page);
+  const [q, setQ] = useState(boot.current.q);
+  const [qDebounced, setQDebounced] = useState(boot.current.q.trim());
   const [err, setErr] = useState(null);
   const fileRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const skipPageReset = useRef(true);
+  const scrollRestored = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 350);
@@ -46,8 +61,31 @@ export function AdminProductsListPage() {
   }, [load]);
 
   useEffect(() => {
+    if (skipPageReset.current) {
+      skipPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [qDebounced]);
+
+  useEffect(() => {
+    writeListSession(LIST_KEY, { page, q, scrollY: typeof window !== 'undefined' ? window.scrollY : 0 });
+  }, [page, q]);
+
+  useEffect(() => {
+    const persist = () => writeListSession(LIST_KEY, { page, q, scrollY: window.scrollY });
+    window.addEventListener('pagehide', persist);
+    return () => {
+      persist();
+      window.removeEventListener('pagehide', persist);
+    };
+  }, [page, q]);
+
+  useEffect(() => {
+    if (scrollRestored.current || data.items.length === 0) return;
+    scrollRestored.current = true;
+    restoreListScroll(boot.current.scrollY);
+  }, [data.items.length]);
 
   async function handleImportFile(e) {
     const file = e.target.files?.[0];

@@ -1,19 +1,34 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
+import { readListSession, restoreListScroll, writeListSession } from '../../utils/listSession.js';
+
+const LIST_KEY = 'admin-media';
+
+function initialListState() {
+  const saved = readListSession(LIST_KEY);
+  return {
+    page: Math.max(1, Number(saved?.page) || 1),
+    q: typeof saved?.q === 'string' ? saved.q : '',
+    scrollY: Number(saved?.scrollY) || 0,
+  };
+}
 
 export function AdminMediaPage() {
+  const boot = useRef(initialListState());
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
-  const [q, setQ] = useState('');
-  const [qDebounced, setQDebounced] = useState('');
+  const [page, setPage] = useState(boot.current.page);
+  const [q, setQ] = useState(boot.current.q);
+  const [qDebounced, setQDebounced] = useState(boot.current.q.trim());
   const [publicUrl, setPublicUrl] = useState('');
   const [title, setTitle] = useState('');
   const [onlyRegisterUrl, setOnlyRegisterUrl] = useState(false);
   const [err, setErr] = useState(null);
   const [hint, setHint] = useState(null);
+  const skipPageReset = useRef(true);
+  const scrollRestored = useRef(false);
 
   useEffect(() => {
     const t = setTimeout(() => setQDebounced(q.trim()), 350);
@@ -38,8 +53,31 @@ export function AdminMediaPage() {
   }, [load]);
 
   useEffect(() => {
+    if (skipPageReset.current) {
+      skipPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [qDebounced]);
+
+  useEffect(() => {
+    writeListSession(LIST_KEY, { page, q, scrollY: typeof window !== 'undefined' ? window.scrollY : 0 });
+  }, [page, q]);
+
+  useEffect(() => {
+    const persist = () => writeListSession(LIST_KEY, { page, q, scrollY: window.scrollY });
+    window.addEventListener('pagehide', persist);
+    return () => {
+      persist();
+      window.removeEventListener('pagehide', persist);
+    };
+  }, [page, q]);
+
+  useEffect(() => {
+    if (scrollRestored.current || items.length === 0) return;
+    scrollRestored.current = true;
+    restoreListScroll(boot.current.scrollY);
+  }, [items.length]);
 
   async function addMedia(e) {
     e.preventDefault();

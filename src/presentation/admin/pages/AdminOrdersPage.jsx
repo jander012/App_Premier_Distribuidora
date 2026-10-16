@@ -1,8 +1,33 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
+import { readListSession, restoreListScroll, writeListSession } from '../../utils/listSession.js';
 
 const PAGE_SIZE = 10;
+const LIST_KEY = 'admin-orders';
+
+const EMPTY_FILTERS = {
+  status: '',
+  phone: '',
+  orderId: '',
+  from: '',
+  to: '',
+};
+
+function initialListState() {
+  const saved = readListSession(LIST_KEY);
+  const filters = { ...EMPTY_FILTERS };
+  if (saved?.filters && typeof saved.filters === 'object') {
+    for (const key of Object.keys(EMPTY_FILTERS)) {
+      if (typeof saved.filters[key] === 'string') filters[key] = saved.filters[key];
+    }
+  }
+  return {
+    page: Math.max(1, Number(saved?.page) || 1),
+    filters,
+    scrollY: Number(saved?.scrollY) || 0,
+  };
+}
 
 const STATUSES = [
   { v: 'received', l: 'Pedido recebido' },
@@ -185,20 +210,17 @@ function printOrderThermalIframe(order, items) {
 }
 
 export function AdminOrdersPage() {
+  const boot = useRef(initialListState());
   const [data, setData] = useState({ items: [], total: 0, page: 1, totalPages: 1 });
-  const [page, setPage] = useState(1);
-  const [filters, setFilters] = useState({
-    status: '',
-    phone: '',
-    orderId: '',
-    from: '',
-    to: '',
-  });
+  const [page, setPage] = useState(boot.current.page);
+  const [filters, setFilters] = useState(boot.current.filters);
   const [err, setErr] = useState(null);
   /** null | 'loading' | { order, items } | { error: string } */
   const [detail, setDetail] = useState(null);
   const [printBusy, setPrintBusy] = useState(false);
   const [printHint, setPrintHint] = useState(null);
+  const skipPageReset = useRef(true);
+  const scrollRestored = useRef(false);
 
   const load = useCallback(async () => {
     setErr(null);
@@ -226,8 +248,40 @@ export function AdminOrdersPage() {
   }, [load]);
 
   useEffect(() => {
+    if (skipPageReset.current) {
+      skipPageReset.current = false;
+      return;
+    }
     setPage(1);
   }, [filters.status, filters.phone, filters.orderId, filters.from, filters.to]);
+
+  useEffect(() => {
+    writeListSession(LIST_KEY, {
+      page,
+      filters,
+      scrollY: typeof window !== 'undefined' ? window.scrollY : 0,
+    });
+  }, [page, filters]);
+
+  useEffect(() => {
+    const persist = () =>
+      writeListSession(LIST_KEY, {
+        page,
+        filters,
+        scrollY: window.scrollY,
+      });
+    window.addEventListener('pagehide', persist);
+    return () => {
+      persist();
+      window.removeEventListener('pagehide', persist);
+    };
+  }, [page, filters]);
+
+  useEffect(() => {
+    if (scrollRestored.current || data.items.length === 0) return;
+    scrollRestored.current = true;
+    restoreListScroll(boot.current.scrollY);
+  }, [data.items.length]);
 
   async function patchOrderStatus(id, status) {
     try {

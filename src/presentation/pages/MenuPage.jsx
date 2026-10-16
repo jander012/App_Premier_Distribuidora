@@ -7,8 +7,32 @@ import { MenuProductRail } from '../components/MenuProductRail.jsx';
 import { useCart } from '../context/CartContext.jsx';
 import { useStore, withStoreQuery } from '../context/StoreContext.jsx';
 import { readAgeGateDecision, restrictedQueryParam, writeAgeGateDecision } from '../utils/ageGate.js';
+import { readListSession, restoreListScroll, writeListSession } from '../utils/listSession.js';
+
 const ALL_CATEGORIES = 'all';
 const PAGE_SIZE = 24;
+function menuListKey(storeSlug) {
+  return `menu-catalog:${storeSlug || 'default'}`;
+}
+
+function initialMenuListState(storeSlug) {
+  const saved = readListSession(menuListKey(storeSlug));
+  let filterCategoryId = null;
+  if (saved?.filterCategoryId === ALL_CATEGORIES) filterCategoryId = ALL_CATEGORIES;
+  else if (
+    saved?.filterCategoryId != null &&
+    saved.filterCategoryId !== '' &&
+    Number.isFinite(Number(saved.filterCategoryId))
+  ) {
+    filterCategoryId = Number(saved.filterCategoryId);
+  }
+  return {
+    filterCategoryId,
+    searchQ: typeof saved?.searchQ === 'string' ? saved.searchQ : '',
+    page: Math.max(1, Number(saved?.page) || 1),
+    scrollY: Number(saved?.scrollY) || 0,
+  };
+}
 const DESTAQUE_FALLBACK_COUNT = 4;
 const HERO_OVERLAY =
   'linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%)';
@@ -41,15 +65,16 @@ export function MenuPage() {
   const [params] = useSearchParams();
   const { deliveryPublic, setPhone } = useCart();
   const { storeSlug } = useStore();
+  const boot = useRef(initialMenuListState(storeSlug));
   const [ageDecision, setAgeDecision] = useState(() => readAgeGateDecision(storeSlug));
   const [categories, setCategories] = useState([]);
   const [products, setProducts] = useState([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
-  const [filterCategoryId, setFilterCategoryId] = useState(null);
-  const [searchQ, setSearchQ] = useState('');
-  const [searchQDebounced, setSearchQDebounced] = useState('');
+  const [filterCategoryId, setFilterCategoryId] = useState(boot.current.filterCategoryId);
+  const [searchQ, setSearchQ] = useState(boot.current.searchQ);
+  const [searchQDebounced, setSearchQDebounced] = useState(boot.current.searchQ.trim());
   const [bestSellers, setBestSellers] = useState([]);
   const [promotions, setPromotions] = useState([]);
   const [buyAgain, setBuyAgain] = useState([]);
@@ -61,6 +86,8 @@ export function MenuPage() {
   const [err, setErr] = useState(null);
   const loadMoreRef = useRef(null);
   const loadingMoreRef = useRef(false);
+  const restorePagesRef = useRef(boot.current.page);
+  const scrollRestored = useRef(false);
 
   useEffect(() => {
     setAgeDecision(readAgeGateDecision(storeSlug));
@@ -72,7 +99,13 @@ export function MenuPage() {
   }, [params, setPhone]);
 
   useEffect(() => {
-    const t = setTimeout(() => setSearchQDebounced(searchQ.trim()), 350);
+    const t = setTimeout(() => {
+      const next = searchQ.trim();
+      setSearchQDebounced((prev) => {
+        if (prev !== next) restorePagesRef.current = 1;
+        return next;
+      });
+    }, 350);
     return () => clearTimeout(t);
   }, [searchQ]);
 
@@ -155,17 +188,27 @@ export function MenuPage() {
     setLoadingProducts(true);
     setErr(null);
     setProducts([]);
-    setPage(1);
     setHasMore(false);
     setTotal(0);
+    // Só zera depois do carregamento bem-sucedido (Strict Mode cancela a 1ª execução).
+    const targetPages = Math.max(1, restorePagesRef.current || 1);
     (async () => {
       try {
-        const data = await fetchPage(1);
+        let allItems = [];
+        let last = { total: 0, hasMore: false, page: 1 };
+        for (let p = 1; p <= targetPages; p += 1) {
+          const data = await fetchPage(p);
+          if (!on) return;
+          allItems = p === 1 ? data.items : [...allItems, ...data.items];
+          last = data;
+          if (!data.hasMore) break;
+        }
         if (!on) return;
-        setProducts(data.items);
-        setTotal(data.total);
-        setHasMore(data.hasMore);
-        setPage(data.page);
+        restorePagesRef.current = 1;
+        setProducts(allItems);
+        setTotal(last.total);
+        setHasMore(last.hasMore);
+        setPage(last.page);
       } catch (e) {
         if (on) {
           setErr(e.message);
@@ -211,6 +254,37 @@ export function MenuPage() {
     observer.observe(el);
     return () => observer.disconnect();
   }, [hasMore, loadingProducts, loadMore, products.length]);
+
+  useEffect(() => {
+    const key = menuListKey(storeSlug);
+    const snapshot = () =>
+      writeListSession(key, {
+        filterCategoryId,
+        searchQ,
+        page,
+        scrollY: window.scrollY,
+      });
+    snapshot();
+    let scrollTimer = null;
+    const onScroll = () => {
+      window.clearTimeout(scrollTimer);
+      scrollTimer = window.setTimeout(snapshot, 150);
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('pagehide', snapshot);
+    return () => {
+      snapshot();
+      window.clearTimeout(scrollTimer);
+      window.removeEventListener('scroll', onScroll);
+      window.removeEventListener('pagehide', snapshot);
+    };
+  }, [filterCategoryId, searchQ, page, storeSlug]);
+
+  useEffect(() => {
+    if (scrollRestored.current || loadingProducts || products.length === 0) return;
+    scrollRestored.current = true;
+    restoreListScroll(boot.current.scrollY, { attempts: 12, delayMs: 60 });
+  }, [loadingProducts, products.length]);
 
   const activeCategoryName = useMemo(() => {
     if (searchQDebounced) return `Busca: “${searchQDebounced}”`;
@@ -296,7 +370,10 @@ export function MenuPage() {
         <CategoryStrip
           categories={categories}
           value={filterCategoryId}
-          onChange={setFilterCategoryId}
+          onChange={(id) => {
+            restorePagesRef.current = 1;
+            setFilterCategoryId(id);
+          }}
           allValue={ALL_CATEGORIES}
         />
       )}
