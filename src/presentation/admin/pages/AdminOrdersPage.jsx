@@ -41,6 +41,28 @@ function formatElapsed(from, to = Date.now()) {
   return `${h}h ${rm}min`;
 }
 
+function formatClock(from) {
+  if (!from) return '—';
+  return new Date(from).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+}
+
+function orderCreatedAt(row) {
+  return row.created_at || row.createdAt || null;
+}
+
+function orderCustomerName(row) {
+  return (
+    row.customer_full_name ||
+    row.customer?.fullName ||
+    row.customer?.full_name ||
+    ''
+  ).trim();
+}
+
+function orderCustomerPhone(row) {
+  return row.customer_phone || row.customer?.phone || '';
+}
+
 function orderClaimCode(orderId) {
   return String(orderId);
 }
@@ -222,7 +244,13 @@ export function AdminOrdersPage() {
   const [err, setErr] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [dragId, setDragId] = useState(null);
+  const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
 
   const loadKanban = useCallback(async () => {
     setErr(null);
@@ -299,17 +327,37 @@ export function AdminOrdersPage() {
   }
 
   async function moveToColumn(orderId, colKey) {
-    const status = targetStatusForCol(colKey);
-    if (!status) return;
-    const row = orders.find((o) => o.id === orderId);
-    if (!row || colForStatus(row.status) === colKey) return;
+    const nextStatus = targetStatusForCol(colKey);
+    if (!nextStatus) return;
+    const row = orders.find((o) => Number(o.id) === Number(orderId));
+    if (!row) return;
+    // Já na coluna certa e com o status alvo → nada a fazer
+    if (colForStatus(row.status) === colKey && row.status === nextStatus) return;
+    // Em andamento com confirmação pendente: não rebaixa para out_for_delivery
+    if (colKey === 'andamento' && row.status === 'delivered_pending_confirmation') return;
+
     setBusyId(orderId);
     setErr(null);
+    // Otimista: move o card e atualiza o status na hora
+    setOrders((prev) =>
+      prev
+        .map((o) => (Number(o.id) === Number(orderId) ? { ...o, status: nextStatus } : o))
+        .filter((o) => colForStatus(o.status))
+    );
     try {
-      await api.patch(`/admin/orders/${orderId}/status`, { status, notify: true }, { headers: adminHeaders() });
-      setOrders((prev) => prev.map((o) => (o.id === orderId ? { ...o, status } : o)).filter((o) => colForStatus(o.status)));
+      const updated = await api.patch(
+        `/admin/orders/${orderId}/status`,
+        { status: nextStatus, notify: true },
+        { headers: adminHeaders() }
+      );
+      const confirmed = updated?.status || nextStatus;
+      setOrders((prev) =>
+        prev
+          .map((o) => (Number(o.id) === Number(orderId) ? { ...o, ...updated, status: confirmed } : o))
+          .filter((o) => colForStatus(o.status))
+      );
     } catch (e) {
-      setErr(e.message);
+      setErr(e.message || 'Não foi possível atualizar o status');
       loadKanban();
     } finally {
       setBusyId(null);
@@ -318,8 +366,13 @@ export function AdminOrdersPage() {
 
   function onDropCol(colKey, e) {
     e.preventDefault();
-    const id = Number(e.dataTransfer.getData('text/order-id') || dragId);
-    if (Number.isFinite(id)) moveToColumn(id, colKey);
+    e.stopPropagation();
+    const raw =
+      e.dataTransfer.getData('text/order-id') ||
+      e.dataTransfer.getData('text/plain') ||
+      dragId;
+    const id = Number(raw);
+    if (Number.isFinite(id) && id > 0) moveToColumn(id, colKey);
     setDragId(null);
   }
 
@@ -351,8 +404,8 @@ export function AdminOrdersPage() {
       </div>
 
       <p className="muted" style={{ marginTop: 0 }}>
-        Arraste entre colunas para avançar o status. O entregador é definido só pelo app (QR/código). Finalizados ficam
-        no histórico.
+        Ao mudar de coluna (arrastar ou botão), o status do pedido atualiza junto. O entregador é definido só pelo app
+        (QR/código). Finalizados ficam no histórico.
       </p>
 
       {err && <p className="err">{err}</p>}
@@ -371,7 +424,11 @@ export function AdminOrdersPage() {
                 <span className="muted">{columns[col.key]?.length || 0}</span>
               </header>
               <div className="admin-kanban__list">
-                {(columns[col.key] || []).map((row) => (
+                {(columns[col.key] || []).map((row) => {
+                  const created = orderCreatedAt(row);
+                  const name = orderCustomerName(row);
+                  const phone = orderCustomerPhone(row);
+                  return (
                   <article
                     key={row.id}
                     className={`card admin-kanban__card${busyId === row.id ? ' is-busy' : ''}`}
@@ -379,6 +436,7 @@ export function AdminOrdersPage() {
                     onDragStart={(e) => {
                       setDragId(row.id);
                       e.dataTransfer.setData('text/order-id', String(row.id));
+                      e.dataTransfer.setData('text/plain', String(row.id));
                       e.dataTransfer.effectAllowed = 'move';
                     }}
                     onDragEnd={() => setDragId(null)}
@@ -387,12 +445,22 @@ export function AdminOrdersPage() {
                       <strong>#{row.id}</strong>
                       <span>R$ {Number(row.total).toFixed(2)}</span>
                     </div>
-                    <p className="muted" style={{ margin: '0.25rem 0', fontSize: '0.85rem' }}>
-                      {row.customer_phone || '—'}
+                    <p className="admin-kanban__status">{statusLabel(row.status)}</p>
+                    <p className="admin-kanban__customer">
+                      {name || 'Cliente sem nome'}
                     </p>
-                    <p className="muted" style={{ margin: 0, fontSize: '0.8rem' }}>
-                      Há {formatElapsed(row.created_at || row.createdAt)}
-                      {row.driver_name ? ` · ${row.driver_name}` : ' · sem entregador'}
+                    {phone ? (
+                      <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.85rem' }}>
+                        {phone}
+                      </p>
+                    ) : null}
+                    <p className="admin-kanban__time">
+                      <span>{formatClock(created)}</span>
+                      <span aria-hidden="true"> · </span>
+                      <span>há {formatElapsed(created, now)}</span>
+                    </p>
+                    <p className="muted" style={{ margin: '0.2rem 0 0', fontSize: '0.78rem' }}>
+                      {row.driver_name ? row.driver_name : 'Sem entregador'}
                     </p>
                     <div className="admin-kanban__card-actions">
                       <button
@@ -416,19 +484,42 @@ export function AdminOrdersPage() {
                         </button>
                       )}
                       {col.key === 'preparing' && (
+                        <>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.82rem' }}
+                            disabled={busyId === row.id}
+                            onClick={() => moveToColumn(row.id, 'received')}
+                          >
+                            ← Recebido
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-ghost"
+                            style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.82rem' }}
+                            disabled={busyId === row.id}
+                            onClick={() => moveToColumn(row.id, 'andamento')}
+                          >
+                            → Andamento
+                          </button>
+                        </>
+                      )}
+                      {col.key === 'andamento' && (
                         <button
                           type="button"
                           className="btn btn-ghost"
                           style={{ width: 'auto', padding: '0.3rem 0.6rem', fontSize: '0.82rem' }}
-                          disabled={busyId === row.id}
-                          onClick={() => moveToColumn(row.id, 'andamento')}
+                          disabled={busyId === row.id || row.status === 'delivered_pending_confirmation'}
+                          onClick={() => moveToColumn(row.id, 'preparing')}
                         >
-                          → Andamento
+                          ← Preparo
                         </button>
                       )}
                     </div>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ))}
@@ -448,14 +539,14 @@ export function AdminOrdersPage() {
                   <div>
                     <p className="admin-order-card__id">Pedido #{row.id}</p>
                     <p className="admin-order-card__meta">
-                      {statusLabel(row.status)} · criado{' '}
-                      {row.created_at ? new Date(row.created_at).toLocaleString('pt-BR') : '—'}
+                      {statusLabel(row.status)} · {orderCustomerName(row) || 'Cliente'} · criado{' '}
+                      {orderCreatedAt(row) ? new Date(orderCreatedAt(row)).toLocaleString('pt-BR') : '—'}
                     </p>
                   </div>
                   <div className="admin-order-card__total">R$ {Number(row.total).toFixed(2)}</div>
                 </div>
                 <p className="muted" style={{ margin: 0, fontSize: '0.85rem' }}>
-                  Duração: {formatElapsed(row.created_at, row.delivered_at || row.updated_at || Date.now())}
+                  Duração: {formatElapsed(orderCreatedAt(row), row.delivered_at || row.updated_at || Date.now())}
                   {row.driver_name ? ` · ${row.driver_name}` : ''}
                 </p>
               </article>

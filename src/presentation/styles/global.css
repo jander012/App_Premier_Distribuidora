@@ -1061,6 +1061,27 @@ a {
   display: flex;
   justify-content: space-between;
   gap: 0.5rem;
+  align-items: baseline;
+}
+.admin-kanban__status {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text, #171717);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.admin-kanban__customer {
+  margin: 0.35rem 0 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+.admin-kanban__time {
+  margin: 0.35rem 0 0;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text, #171717);
 }
 .admin-kanban__card-actions {
   display: flex;
