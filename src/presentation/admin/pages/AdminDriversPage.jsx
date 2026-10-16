@@ -11,6 +11,10 @@ export function AdminDriversPage() {
   const [err, setErr] = useState(null);
   const [msg, setMsg] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [ssoOpenId, setSsoOpenId] = useState(null);
+  const [ssoLogins, setSsoLogins] = useState([]);
+  const [ssoEmail, setSsoEmail] = useState('');
+  const [ssoBusy, setSsoBusy] = useState(false);
 
   const applyPayload = useCallback((payload) => {
     const list = Array.isArray(payload) ? payload : payload?.drivers;
@@ -68,6 +72,66 @@ export function AdminDriversPage() {
     }
   }
 
+  async function openSsoLogins(driverId) {
+    setErr(null);
+    setSsoBusy(true);
+    try {
+      if (ssoOpenId === driverId) {
+        setSsoOpenId(null);
+        setSsoLogins([]);
+        return;
+      }
+      const res = await api.get(`/admin/drivers/${driverId}/sso-logins`, { headers: adminHeaders() });
+      setSsoOpenId(driverId);
+      setSsoLogins(Array.isArray(res.logins) ? res.logins : []);
+      setSsoEmail('');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSsoBusy(false);
+    }
+  }
+
+  async function addSsoLogin(driverId) {
+    const email = ssoEmail.trim().toLowerCase();
+    if (!email.includes('@')) {
+      setErr('Informe um e-mail SSO válido');
+      return;
+    }
+    setSsoBusy(true);
+    setErr(null);
+    try {
+      const res = await api.post(
+        `/admin/drivers/${driverId}/sso-logins`,
+        { email },
+        { headers: adminHeaders() }
+      );
+      setSsoLogins(Array.isArray(res.logins) ? res.logins : []);
+      setSsoEmail('');
+      setMsg(`Login SSO ${email} vinculado a este entregador.`);
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSsoBusy(false);
+    }
+  }
+
+  async function removeSsoLogin(driverId, loginId) {
+    setSsoBusy(true);
+    setErr(null);
+    try {
+      const res = await api.delete(`/admin/drivers/${driverId}/sso-logins/${loginId}`, {
+        headers: adminHeaders(),
+      });
+      setSsoLogins(Array.isArray(res.logins) ? res.logins : []);
+      setMsg('Login SSO removido.');
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setSsoBusy(false);
+    }
+  }
+
   return (
     <div>
       <div className="admin-toolbar">
@@ -99,7 +163,8 @@ export function AdminDriversPage() {
             <p style={{ marginTop: 0 }}>
               Os entregadores vêm do mesmo cadastro do sistema Premier (
               <strong>enviar_dados_entregador</strong>
-              ). Aqui você só escolhe o padrão usado nos pedidos e envia a localização pelo WhatsApp.
+              ). Aqui você escolhe o padrão, vincula logins SSO (pode ser mais de um e-mail por pessoa) e usa nos
+              pedidos.
             </p>
             {cadastroUrl && (
               <p style={{ margin: '0 0 0.75rem' }}>
@@ -157,7 +222,58 @@ export function AdminDriversPage() {
                     Definir padrão
                   </button>
                 )}
+                <button
+                  type="button"
+                  className="btn btn-ghost"
+                  style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
+                  disabled={ssoBusy}
+                  onClick={() => openSsoLogins(d.id)}
+                >
+                  {ssoOpenId === d.id ? 'Fechar logins SSO' : 'Logins SSO'}
+                </button>
               </div>
+              {ssoOpenId === d.id && (
+                <div style={{ marginTop: '0.85rem', paddingTop: '0.75rem', borderTop: '1px solid rgba(0,0,0,0.08)' }}>
+                  <p className="muted" style={{ margin: '0 0 0.5rem', fontSize: '0.85rem' }}>
+                    Vários e-mails SSO podem entrar no app como esta pessoa.
+                  </p>
+                  <ul style={{ margin: '0 0 0.75rem', paddingLeft: '1.1rem' }}>
+                    {ssoLogins.map((l) => (
+                      <li key={l.id} style={{ marginBottom: 4 }}>
+                        <code>{l.email}</code>
+                        <button
+                          type="button"
+                          className="btn btn-ghost"
+                          style={{ width: 'auto', padding: '0.15rem 0.45rem', fontSize: '0.75rem', marginLeft: 8 }}
+                          disabled={ssoBusy}
+                          onClick={() => removeSsoLogin(d.id, l.id)}
+                        >
+                          Remover
+                        </button>
+                      </li>
+                    ))}
+                    {ssoLogins.length === 0 && <li className="muted">Nenhum login SSO vinculado.</li>}
+                  </ul>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    <input
+                      type="email"
+                      placeholder="email@sso..."
+                      value={ssoEmail}
+                      onChange={(e) => setSsoEmail(e.target.value)}
+                      style={{ flex: 1, minWidth: 160 }}
+                    />
+                    <button
+                      type="button"
+                      className="btn btn-primary"
+                      style={{ width: 'auto', padding: '0.35rem 0.65rem', fontSize: '0.85rem' }}
+                      disabled={ssoBusy}
+                      onClick={() => addSsoLogin(d.id)}
+                    >
+                      Vincular
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </article>
         ))}

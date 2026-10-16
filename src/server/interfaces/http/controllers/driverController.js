@@ -259,6 +259,75 @@ export async function adminListRuns(req, res, next) {
   }
 }
 
+/** Lista logins SSO vinculados ao entregador (N logins → 1 cadastro). */
+export async function adminListDriverSsoLogins(req, res, next) {
+  try {
+    const driverId = Number(req.params.id);
+    const driver = await driverRepo.findDriverById(driverId, req.storeId);
+    if (!driver) throw new AppError(404, 'Entregador não encontrado');
+    const logins = await driverRepo.listSsoLogins(driverId, req.storeId);
+    res.json({
+      driverId,
+      driver: publicDriver(driver),
+      logins: logins.map((l) => ({
+        id: l.id,
+        email: l.email,
+        ssoSub: l.sso_sub,
+        label: l.label,
+        createdAt: l.created_at,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function adminAddDriverSsoLogin(req, res, next) {
+  try {
+    const driverId = Number(req.params.id);
+    const email = String(req.body?.email || '').trim();
+    const label = String(req.body?.label || '').trim() || null;
+    const ssoSub = req.body?.ssoSub != null ? String(req.body.ssoSub) : null;
+    const logins = await driverRepo.addSsoLogin(driverId, req.storeId, { email, ssoSub, label });
+    if (!logins) throw new AppError(404, 'Entregador não encontrado');
+    res.status(201).json({
+      driverId,
+      logins: logins.map((l) => ({
+        id: l.id,
+        email: l.email,
+        ssoSub: l.sso_sub,
+        label: l.label,
+        createdAt: l.created_at,
+      })),
+    });
+  } catch (e) {
+    if (e.status) return next(new AppError(e.status, e.message));
+    next(e);
+  }
+}
+
+export async function adminRemoveDriverSsoLogin(req, res, next) {
+  try {
+    const driverId = Number(req.params.id);
+    const loginId = Number(req.params.loginId);
+    const driver = await driverRepo.findDriverById(driverId, req.storeId);
+    if (!driver) throw new AppError(404, 'Entregador não encontrado');
+    const logins = await driverRepo.removeSsoLogin(driverId, req.storeId, loginId);
+    res.json({
+      driverId,
+      logins: logins.map((l) => ({
+        id: l.id,
+        email: l.email,
+        ssoSub: l.sso_sub,
+        label: l.label,
+        createdAt: l.created_at,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
 export async function driverLogin(req, res, next) {
   try {
     const storeId = Number(req.body.storeId || req.body.store_id || 1);

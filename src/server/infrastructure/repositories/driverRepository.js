@@ -361,3 +361,90 @@ export async function upsertReview({ orderId, storeId, driverId = null, targetTy
     [orderId, storeId, driverId, targetType, rating, comment || null]
   );
 }
+
+/** Logins SSO vinculados a um entregador (N e-mails → 1 cadastro). */
+export async function listSsoLogins(driverId, storeId = null) {
+  let sql = `SELECT id, driver_id, store_id, email, sso_sub, label, created_at
+               FROM delivery_driver_sso_logins WHERE driver_id = $1`;
+  const params = [driverId];
+  if (storeId != null) {
+    sql += ` AND store_id = $2`;
+    params.push(storeId);
+  }
+  sql += ` ORDER BY created_at ASC`;
+  const { rows } = await query(sql, params);
+  return rows;
+}
+
+export async function findDriverBySsoEmail(email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const { rows } = await query(
+    `SELECT dd.*
+       FROM delivery_driver_sso_logins l
+       JOIN delivery_drivers dd ON dd.id = l.driver_id
+      WHERE lower(l.email) = $1 AND dd.active = true
+      ORDER BY dd.is_default DESC, dd.id ASC
+      LIMIT 1`,
+    [normalized]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Vincula um e-mail SSO ao entregador da loja.
+ * Se o e-mail já estiver em outro driver, falha (exceto se for o mesmo).
+ */
+export async function addSsoLogin(driverId, storeId, { email, ssoSub = null, label = null }) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized || !normalized.includes('@')) {
+    const err = new Error('E-mail SSO inválido');
+    err.status = 400;
+    throw err;
+  }
+  const driver = await findDriverById(driverId, storeId);
+  if (!driver) return null;
+
+  const existing = await query(
+    `SELECT id, driver_id FROM delivery_driver_sso_logins WHERE lower(email) = $1 LIMIT 1`,
+    [normalized]
+  );
+  if (existing.rows[0] && Number(existing.rows[0].driver_id) !== Number(driverId)) {
+    const err = new Error('Este e-mail SSO já está vinculado a outro entregador');
+    err.status = 409;
+    throw err;
+  }
+  if (existing.rows[0]) {
+    await query(
+      `UPDATE delivery_driver_sso_logins
+          SET sso_sub = COALESCE($2, sso_sub), label = COALESCE($3, label)
+        WHERE id = $1`,
+      [existing.rows[0].id, ssoSub, label]
+    );
+  } else {
+    await query(
+      `INSERT INTO delivery_driver_sso_logins (driver_id, store_id, email, sso_sub, label)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [driverId, storeId, normalized, ssoSub, label]
+    );
+  }
+
+  // Se o cadastro ainda não tem external_email, usa o primeiro login como principal.
+  if (!driver.external_email) {
+    await query(
+      `UPDATE delivery_drivers SET external_email = $3, external_source = COALESCE(external_source, 'sso'), updated_at = now()
+        WHERE id = $1 AND store_id = $2`,
+      [driverId, storeId, normalized]
+    );
+  }
+
+  return listSsoLogins(driverId, storeId);
+}
+
+export async function removeSsoLogin(driverId, storeId, loginId) {
+  await query(
+    `DELETE FROM delivery_driver_sso_logins WHERE id = $1 AND driver_id = $2 AND store_id = $3`,
+    [loginId, driverId, storeId]
+  );
+  return listSsoLogins(driverId, storeId);
+}

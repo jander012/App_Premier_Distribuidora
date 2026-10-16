@@ -38,19 +38,25 @@ function runPayload(row) {
 async function resolveDriverByEmail(email) {
   const normalized = String(email || '').trim().toLowerCase();
   if (!normalized) throw new AppError(400, 'email obrigatório');
+
+  // 1) Login SSO vinculado (vários e-mails → um cadastro)
+  const bySso = await driverRepo.findDriverBySsoEmail(normalized);
+  if (bySso) return bySso;
+
+  // 2) E-mail principal do espelho Premier / cadastro
   const { rows } = await query(
     `SELECT * FROM delivery_drivers WHERE lower(external_email) = $1 AND active = true ORDER BY is_default DESC, id ASC LIMIT 1`,
     [normalized]
   );
-  if (!rows[0]) {
-    const byUser = await query(
-      `SELECT * FROM delivery_drivers WHERE lower(username) = $1 AND active = true LIMIT 1`,
-      [normalized.split('@')[0]]
-    );
-    if (!byUser.rows[0]) throw new AppError(404, 'Entregador não encontrado na loja');
-    return byUser.rows[0];
-  }
-  return rows[0];
+  if (rows[0]) return rows[0];
+
+  // 3) Username local
+  const byUser = await query(
+    `SELECT * FROM delivery_drivers WHERE lower(username) = $1 AND active = true LIMIT 1`,
+    [normalized.split('@')[0]]
+  );
+  if (!byUser.rows[0]) throw new AppError(404, 'Entregador não encontrado na loja');
+  return byUser.rows[0];
 }
 
 export async function listRuns(req, res, next) {
@@ -234,6 +240,53 @@ export async function history(req, res, next) {
         customerName: r.customer_full_name,
         deliveryFee: Number(r.delivery_fee || 0),
         completedAt: r.completed_at || r.updated_at,
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+/**
+ * App entregador / sync: vincula e-mail SSO a um entregador da loja.
+ * Body: { email, ssoEmail?, ssoSub?, label?, driverId? }
+ * Resolve o cadastro por e-mail principal ou driverId.
+ */
+export async function linkSsoLogin(req, res, next) {
+  try {
+    const ssoEmail = String(req.body?.ssoEmail || req.body?.email || '').trim().toLowerCase();
+    const primaryEmail = String(req.body?.primaryEmail || req.body?.driverEmail || '').trim().toLowerCase();
+    const driverId = req.body?.driverId != null ? Number(req.body.driverId) : null;
+    const ssoSub = req.body?.ssoSub != null ? String(req.body.ssoSub) : null;
+    const label = String(req.body?.label || '').trim() || null;
+
+    let driver = null;
+    if (driverId) {
+      driver = await driverRepo.findDriverById(driverId);
+    } else if (primaryEmail) {
+      driver = await resolveDriverByEmail(primaryEmail);
+    } else if (ssoEmail) {
+      // Se já existe vínculo, devolve; senão tenta external_email = ssoEmail
+      driver = (await driverRepo.findDriverBySsoEmail(ssoEmail)) || (await resolveDriverByEmail(ssoEmail));
+    }
+    if (!driver) throw new AppError(404, 'Entregador não encontrado na loja');
+
+    const emailToLink = ssoEmail || primaryEmail;
+    if (!emailToLink) throw new AppError(400, 'Informe ssoEmail');
+
+    const logins = await driverRepo.addSsoLogin(driver.id, driver.store_id, {
+      email: emailToLink,
+      ssoSub,
+      label,
+    });
+    res.status(201).json({
+      driverId: driver.id,
+      storeId: driver.store_id,
+      logins: logins.map((l) => ({
+        id: l.id,
+        email: l.email,
+        ssoSub: l.sso_sub,
+        label: l.label,
       })),
     });
   } catch (e) {
