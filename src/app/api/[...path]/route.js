@@ -94,6 +94,7 @@ const routes = [
   ['GET', '/admin/orders/:id', [...adminProtected, adminController.getOrderAdmin]],
   ['POST', '/admin/orders/:id/print-thermal', [...adminProtected, adminController.printOrderThermal]],
   ['GET', '/admin/drivers', [...adminProtected, driverController.adminListDrivers]],
+  ['POST', '/admin/drivers/sync', [...adminProtected, driverController.adminSyncDrivers]],
   ['POST', '/admin/drivers', [...adminProtected, driverController.adminCreateDriver]],
   ['PUT', '/admin/drivers/default', [...adminProtected, driverController.adminSetDefaultDriver]],
   ['PUT', '/admin/drivers/:id', [...adminProtected, driverController.adminUpdateDriver]],

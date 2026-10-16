@@ -2,13 +2,96 @@ import { query } from '../config/db.js';
 
 export async function listDrivers(storeId) {
   const { rows } = await query(
-    `SELECT id, store_id, name, cpf, phone, vehicle_description, vehicle_photo_url, username, active, is_default, created_at, updated_at
+    `SELECT id, store_id, name, cpf, phone, vehicle_description, vehicle_photo_url, username, active, is_default,
+            external_email, external_source, created_at, updated_at
      FROM delivery_drivers
      WHERE store_id = $1
      ORDER BY is_default DESC, active DESC, name ASC`,
     [storeId]
   );
   return rows;
+}
+
+export async function findDriverByExternalEmail(storeId, email) {
+  const normalized = String(email || '').trim().toLowerCase();
+  if (!normalized) return null;
+  const { rows } = await query(
+    `SELECT * FROM delivery_drivers WHERE store_id = $1 AND lower(external_email) = $2 LIMIT 1`,
+    [storeId, normalized]
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Espelha o cadastro Premier (enviar_dados_entregador) em delivery_drivers da loja.
+ * Mantém is_default e password_hash locais.
+ */
+export async function syncExternalEntregadores(storeId, remoteList, { passwordHashFallback }) {
+  const seenEmails = new Set();
+  const synced = [];
+
+  for (const remote of remoteList || []) {
+    const email = String(remote.email || '').trim().toLowerCase();
+    if (!email) continue;
+    seenEmails.add(email);
+    const usernameBase = String(remote.username || email.split('@')[0] || `e${Date.now()}`)
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]/g, '')
+      .slice(0, 70);
+    let username = usernameBase || `e${Date.now()}`;
+    const phone = remote.telefone ? String(remote.telefone).replace(/\D/g, '') : null;
+    const name = String(remote.nome || email).trim();
+
+    let existing = await findDriverByExternalEmail(storeId, email);
+    if (!existing) {
+      const byUser = await query(
+        `SELECT * FROM delivery_drivers WHERE store_id = $1 AND username = $2 LIMIT 1`,
+        [storeId, username]
+      );
+      existing = byUser.rows[0] || null;
+      if (existing && existing.external_email && existing.external_email !== email) {
+        username = `${usernameBase}_${email.slice(0, 6)}`.slice(0, 80);
+        existing = null;
+      }
+    }
+
+    if (existing) {
+      await query(
+        `UPDATE delivery_drivers
+            SET name = $3, phone = $4, username = $5, external_email = $6, external_source = 'premier',
+                active = true, updated_at = now()
+          WHERE id = $1 AND store_id = $2`,
+        [existing.id, storeId, name, phone, existing.username || username, email]
+      );
+      synced.push(await findDriverById(existing.id, storeId));
+    } else {
+      const result = await query(
+        `INSERT INTO delivery_drivers
+          (store_id, name, cpf, phone, vehicle_description, vehicle_photo_url, username, password_hash, active, is_default, external_email, external_source)
+         VALUES ($1, $2, '', $3, NULL, NULL, $4, $5, true, false, $6, 'premier')`,
+        [storeId, name, phone, username, passwordHashFallback, email]
+      );
+      synced.push(await findDriverById(result.insertId, storeId));
+    }
+  }
+
+  // Desativa espelhos Premier que sumiram do cadastro remoto (não apaga — preserva histórico de pedidos).
+  const { rows: localPremier } = await query(
+    `SELECT id, external_email FROM delivery_drivers
+      WHERE store_id = $1 AND external_source = 'premier' AND external_email IS NOT NULL`,
+    [storeId]
+  );
+  for (const row of localPremier) {
+    if (!seenEmails.has(String(row.external_email).toLowerCase())) {
+      await query(
+        `UPDATE delivery_drivers SET active = false, updated_at = now() WHERE id = $1 AND store_id = $2`,
+        [row.id, storeId]
+      );
+    }
+  }
+
+  return synced;
 }
 
 export async function findDefaultDriver(storeId) {

@@ -279,7 +279,8 @@ export function AdminOrdersPage() {
 
   const loadDrivers = useCallback(async () => {
     try {
-      const rows = await api.get('/admin/drivers', { headers: adminHeaders() });
+      const payload = await api.get('/admin/drivers', { headers: adminHeaders() });
+      const rows = Array.isArray(payload) ? payload : payload?.drivers;
       setDrivers(Array.isArray(rows) ? rows.filter((d) => d.active !== false) : []);
     } catch {
       setDrivers([]);

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import * as driverRepo from '../../../infrastructure/repositories/driverRepository.js';
 import * as orderRepo from '../../../infrastructure/repositories/orderRepository.js';
 import * as tokenService from '../../../application/services/tokenService.js';
+import * as entregadoresSync from '../../../application/services/entregadoresSyncService.js';
 import { AppError } from '../../../domain/shared/AppError.js';
 
 function publicDriver(row) {
@@ -17,7 +18,19 @@ function publicDriver(row) {
     username: row.username,
     active: row.active !== false,
     isDefault: Boolean(row.is_default),
+    externalEmail: row.external_email || null,
+    externalSource: row.external_source || null,
   };
+}
+
+function remoteCadastroError() {
+  const url = entregadoresSync.cadastroUrl();
+  return new AppError(
+    400,
+    url
+      ? `Cadastre ou edite entregadores em ${url}. Aqui só é possível definir o padrão e usar nos pedidos.`
+      : 'Cadastre os entregadores no sistema Premier (enviar_dados_entregador). Aqui só é possível definir o padrão.'
+  );
 }
 
 function digitsPhone(phone) {
@@ -66,8 +79,51 @@ function runPayload(row, { hideCustomer = false } = {}) {
 
 export async function adminListDrivers(req, res, next) {
   try {
+    const sync = req.query.sync !== '0' && req.query.sync !== 'false';
+    let syncMeta = null;
+    if (sync && entregadoresSync.remoteEntregadoresEnabled()) {
+      try {
+        const result = await entregadoresSync.syncStoreDriversFromPremier(req.storeId);
+        syncMeta = {
+          source: result.source,
+          cadastroUrl: result.cadastroUrl,
+          remoteCount: result.remoteCount,
+        };
+      } catch (syncErr) {
+        // Continua com espelho local se a API remota falhar.
+        syncMeta = {
+          source: 'local-cache',
+          cadastroUrl: entregadoresSync.cadastroUrl(),
+          syncError: syncErr.message,
+        };
+      }
+    } else if (entregadoresSync.remoteEntregadoresEnabled()) {
+      syncMeta = { source: 'premier', cadastroUrl: entregadoresSync.cadastroUrl() };
+    }
     const rows = await driverRepo.listDrivers(req.storeId);
-    res.json(rows.map(publicDriver));
+    res.json({
+      drivers: rows.map(publicDriver),
+      remoteConfigured: entregadoresSync.remoteEntregadoresEnabled(),
+      cadastroUrl: entregadoresSync.cadastroUrl() || null,
+      sync: syncMeta,
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function adminSyncDrivers(req, res, next) {
+  try {
+    if (!entregadoresSync.remoteEntregadoresEnabled()) {
+      throw new AppError(503, 'API de entregadores não configurada (ENTREGADORES_API_BASE_URL).');
+    }
+    const result = await entregadoresSync.syncStoreDriversFromPremier(req.storeId);
+    res.json({
+      drivers: result.drivers.map(publicDriver),
+      remoteConfigured: true,
+      cadastroUrl: result.cadastroUrl || null,
+      sync: { source: result.source, remoteCount: result.remoteCount },
+    });
   } catch (e) {
     next(e);
   }
@@ -75,6 +131,7 @@ export async function adminListDrivers(req, res, next) {
 
 export async function adminCreateDriver(req, res, next) {
   try {
+    if (entregadoresSync.remoteEntregadoresEnabled()) throw remoteCadastroError();
     const password = String(req.body.password || '').trim();
     if (password.length < 4) throw new AppError(400, 'Informe uma senha com pelo menos 4 caracteres.');
     const phone = digitsPhone(req.body.phone);
@@ -98,6 +155,22 @@ export async function adminCreateDriver(req, res, next) {
 
 export async function adminUpdateDriver(req, res, next) {
   try {
+    const id = Number(req.params.id);
+    const current = await driverRepo.findDriverById(id, req.storeId);
+    if (!current) return res.status(404).json({ error: 'Entregador não encontrado' });
+
+    // Com cadastro remoto: só permite marcar/desmarcar padrão (dados vêm do Premier).
+    if (entregadoresSync.remoteEntregadoresEnabled() || current.external_source === 'premier') {
+      if (req.body.isDefault === true || req.body.is_default === true) {
+        await driverRepo.setDefaultDriver(req.storeId, id);
+      } else if (req.body.isDefault === false || req.body.is_default === false) {
+        if (current.is_default) await driverRepo.setDefaultDriver(req.storeId, null);
+      } else {
+        throw remoteCadastroError();
+      }
+      return res.json(publicDriver(await driverRepo.findDriverById(id, req.storeId)));
+    }
+
     const patch = {};
     for (const k of ['name', 'cpf', 'username']) {
       if (req.body[k] !== undefined) patch[k] = String(req.body[k] || '').trim();
@@ -115,7 +188,6 @@ export async function adminUpdateDriver(req, res, next) {
     }
     if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
     if (req.body.password) patch.passwordHash = await bcrypt.hash(String(req.body.password), 10);
-    const id = Number(req.params.id);
     const row = await driverRepo.updateDriver(id, req.storeId, patch);
     if (!row) return res.status(404).json({ error: 'Entregador não encontrado' });
     if (req.body.isDefault === true || req.body.is_default === true) {

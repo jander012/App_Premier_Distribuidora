@@ -103,6 +103,32 @@ export const env = {
   whatsappOtpEndpoint: (process.env.WHATSAPP_OTP_ENDPOINT || '').trim(),
   whatsappOtpOrigin: (process.env.WHATSAPP_OTP_ORIGIN || process.env.PUBLIC_MENU_URL || 'http://localhost:3000').trim(),
   whatsappOtpSiteKey: (process.env.WHATSAPP_OTP_SITE_KEY || '').trim(),
+  /**
+   * Cadastro de entregadores (projeto enviar_dados_entregador / premier-api).
+   * Ex.: https://chat.premierdistribuidora.com.br
+   * Se vazio, tenta derivar de WHATSAPP_OTP_ENDPOINT.
+   */
+  entregadoresApiBaseUrl: (() => {
+    const explicit = (process.env.ENTREGADORES_API_BASE_URL || '').trim().replace(/\/$/, '');
+    if (explicit) return explicit;
+    const otp = (process.env.WHATSAPP_OTP_ENDPOINT || '').trim();
+    if (!otp) return '';
+    try {
+      return new URL(otp).origin;
+    } catch {
+      return '';
+    }
+  })(),
+  /** Chave do plugin (X-Plugin-Key) da premier-api — mesma PLUGIN_API_KEY do cadastro. */
+  entregadoresApiKey: (process.env.ENTREGADORES_API_KEY || process.env.PLUGIN_API_KEY || '').trim(),
+  /** URL da tela de cadastro (link no admin). */
+  entregadoresCadastroUrl: (
+    process.env.ENTREGADORES_CADASTRO_URL ||
+    process.env.ENTREGADORES_API_BASE_URL ||
+    ''
+  )
+    .trim()
+    .replace(/\/$/, ''),
   pixProvider: process.env.PIX_PROVIDER || 'stub',
   linxProvider: process.env.LINX_PROVIDER || 'stub',
   pickingoProvider: process.env.PICKINGO_PROVIDER || 'stub',
