@@ -1071,11 +1071,11 @@ a {
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.admin-kanban__customer {
-  margin: 0.35rem 0 0;
+.admin-kanban__card-top strong {
   font-size: 0.95rem;
-  font-weight: 700;
   line-height: 1.25;
+  min-width: 0;
+  word-break: break-word;
 }
 .admin-kanban__time {
   margin: 0.35rem 0 0;

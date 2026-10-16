@@ -442,13 +442,12 @@ export function AdminOrdersPage() {
                     onDragEnd={() => setDragId(null)}
                   >
                     <div className="admin-kanban__card-top">
-                      <strong>#{row.id}</strong>
+                      <strong>
+                        {name || 'Cliente'} <span className="muted">#{row.id}</span>
+                      </strong>
                       <span>R$ {Number(row.total).toFixed(2)}</span>
                     </div>
                     <p className="admin-kanban__status">{statusLabel(row.status)}</p>
-                    <p className="admin-kanban__customer">
-                      {name || 'Cliente sem nome'}
-                    </p>
                     {phone ? (
                       <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.85rem' }}>
                         {phone}
