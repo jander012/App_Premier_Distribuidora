@@ -1,7 +1,8 @@
 -- Vários logins SSO (e-mails) podem apontar para o mesmo entregador da loja.
+-- Tipos alinhados a delivery_drivers.id / stores.id (INT).
 CREATE TABLE IF NOT EXISTS delivery_driver_sso_logins (
-  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  driver_id BIGINT UNSIGNED NOT NULL,
+  id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  driver_id INT NOT NULL,
   store_id INT NOT NULL,
   email VARCHAR(255) NOT NULL,
   sso_sub VARCHAR(64) NULL,
