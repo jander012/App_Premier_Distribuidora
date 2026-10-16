@@ -1592,10 +1592,10 @@ body {
   min-height: 168px;
   max-height: min(48vh, 520px);
   border-radius: 12px;
-  background-color: #171717;
+  background-color: #111111;
   background-image: url('https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=1400&q=80');
   background-position: center;
-  background-size: cover;
+  background-size: contain;
   background-repeat: no-repeat;
 }
 
