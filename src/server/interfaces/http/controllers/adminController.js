@@ -5,6 +5,7 @@ import * as customerRepo from '../../../infrastructure/repositories/customerRepo
 import * as menuRepo from '../../../infrastructure/repositories/menuRepository.js';
 import * as settingsRepo from '../../../infrastructure/repositories/settingsRepository.js';
 import * as storeStatusRepo from '../../../infrastructure/repositories/storeStatusRepository.js';
+import * as storeHoursRepo from '../../../infrastructure/repositories/storeHoursRepository.js';
 import * as orderService from '../../../application/services/orderService.js';
 import * as thermalReceiptService from '../../../application/services/thermalReceiptService.js';
 import * as productImport from '../../../application/services/productImportService.js';
@@ -270,11 +271,41 @@ export async function putSettings(req, res, next) {
 
 export async function getStoreStatus(req, res, next) {
   try {
-    const [current, summary] = await Promise.all([
-      storeStatusRepo.getCurrentStatus(req.storeId),
+    const [current, summary, weeklyHours, config] = await Promise.all([
+      storeStatusRepo.getEffectiveStatus(req.storeId),
       storeStatusRepo.getMonthlySummary(req.storeId, req.query.month),
+      storeHoursRepo.listWeeklyHours(req.storeId),
+      settingsRepo.getStoreConfig(req.storeId),
     ]);
-    res.json({ current, summary });
+    res.json({
+      current,
+      summary,
+      weeklyHours,
+      schedule: {
+        autoEnabled: Boolean(config?.auto_schedule_enabled),
+        timezone: config?.store_timezone || storeHoursRepo.DEFAULT_TZ,
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function putStoreHours(req, res, next) {
+  try {
+    const autoEnabled = Boolean(req.body?.autoEnabled ?? req.body?.auto_schedule_enabled);
+    const timezone = String(req.body?.timezone || req.body?.store_timezone || storeHoursRepo.DEFAULT_TZ).trim() || storeHoursRepo.DEFAULT_TZ;
+    await settingsRepo.updateStoreConfig(req.storeId, {
+      auto_schedule_enabled: autoEnabled,
+      store_timezone: timezone,
+    });
+    const weeklyHours = await storeHoursRepo.replaceWeeklyHours(req.storeId, req.body?.days || req.body?.weeklyHours || []);
+    const current = await storeStatusRepo.getEffectiveStatus(req.storeId);
+    res.json({
+      weeklyHours,
+      schedule: { autoEnabled, timezone },
+      current,
+    });
   } catch (e) {
     next(e);
   }
@@ -289,6 +320,7 @@ export async function patchStoreStatus(req, res, next) {
     const current = await storeStatusRepo.createStatusEvent(req.storeId, status, {
       reason: req.body?.reason ? String(req.body.reason).trim() : null,
       adminId: Number.isFinite(adminId) ? adminId : null,
+      source: 'manual',
     });
     const summary = await storeStatusRepo.getMonthlySummary(req.storeId, req.body?.month);
     res.json({ current, summary });

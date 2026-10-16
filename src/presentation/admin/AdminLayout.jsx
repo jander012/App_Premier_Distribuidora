@@ -314,6 +314,9 @@ export function AdminLayout({ children }) {
           <NavLink to="/admin/painel/entrega" title="Entrega" onClick={closeMobileNav}>
             {!collapsed || isMobileNav ? 'Entrega' : 'E'}
           </NavLink>
+          <NavLink to="/admin/painel/entregadores" title="Entregadores" onClick={closeMobileNav}>
+            {!collapsed || isMobileNav ? 'Entregadores' : 'R'}
+          </NavLink>
           <NavLink to="/admin/painel/cupons" title="Cupons" onClick={closeMobileNav}>
             {!collapsed || isMobileNav ? 'Cupons' : 'U'}
           </NavLink>

@@ -44,6 +44,31 @@ function statusLabel(status) {
   return status === 'closed' ? 'Fechada' : 'Aberta';
 }
 
+const WEEK_DAYS = [
+  { dayOfWeek: 0, label: 'Domingo' },
+  { dayOfWeek: 1, label: 'Segunda' },
+  { dayOfWeek: 2, label: 'Terça' },
+  { dayOfWeek: 3, label: 'Quarta' },
+  { dayOfWeek: 4, label: 'Quinta' },
+  { dayOfWeek: 5, label: 'Sexta' },
+  { dayOfWeek: 6, label: 'Sábado' },
+];
+
+function normalizeHoursDays(list) {
+  return WEEK_DAYS.map(({ dayOfWeek, label }) => {
+    const row = (list || []).find((d) => Number(d.dayOfWeek) === dayOfWeek) || {};
+    const hasTimes = Boolean(row.openTime && row.closeTime);
+    const closed = row.closed === true || !hasTimes;
+    return {
+      dayOfWeek,
+      label: row.label || label,
+      closed,
+      openTime: row.openTime || '08:00',
+      closeTime: row.closeTime || '22:00',
+    };
+  });
+}
+
 function getHeroMonthlyImages(settings) {
   const raw = settings?.hero_monthly_images;
   if (raw && typeof raw === 'object' && !Array.isArray(raw)) return raw;
@@ -87,6 +112,11 @@ export function AdminSettingsPage() {
   const [month, setMonth] = useState(getCurrentMonth);
   const [reason, setReason] = useState('');
   const [savingStatus, setSavingStatus] = useState(false);
+  const [savingHours, setSavingHours] = useState(false);
+  const [hoursDays, setHoursDays] = useState(() => normalizeHoursDays([]));
+  const [autoSchedule, setAutoSchedule] = useState(false);
+  const [timezone, setTimezone] = useState('America/Cuiaba');
+  const [hoursMsg, setHoursMsg] = useState(null);
   const [err, setErr] = useState(null);
 
   const load = useCallback(async () => {
@@ -98,6 +128,9 @@ export function AdminSettingsPage() {
       ]);
       setSettings(s);
       setStoreStatus(status);
+      setHoursDays(normalizeHoursDays(status.weeklyHours));
+      setAutoSchedule(Boolean(status.schedule?.autoEnabled));
+      setTimezone(status.schedule?.timezone || s.store_timezone || 'America/Cuiaba');
     } catch (e) {
       setErr(e.message);
     }
@@ -106,6 +139,44 @@ export function AdminSettingsPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  async function saveHours(e) {
+    e.preventDefault();
+    setSavingHours(true);
+    setHoursMsg(null);
+    setErr(null);
+    try {
+      const res = await api.put(
+        '/admin/store-hours',
+        {
+          autoEnabled: autoSchedule,
+          timezone,
+          days: hoursDays.map((d) => ({
+            dayOfWeek: d.dayOfWeek,
+            closed: d.closed,
+            openTime: d.closed ? null : d.openTime,
+            closeTime: d.closed ? null : d.closeTime,
+          })),
+        },
+        { headers: adminHeaders() }
+      );
+      setHoursDays(normalizeHoursDays(res.weeklyHours));
+      setAutoSchedule(Boolean(res.schedule?.autoEnabled));
+      setTimezone(res.schedule?.timezone || timezone);
+      if (res.current) {
+        setStoreStatus((prev) => (prev ? { ...prev, current: res.current } : prev));
+      }
+      setHoursMsg('Horários salvos. A loja abre e fecha automaticamente quando a opção estiver ligada.');
+    } catch (ex) {
+      setErr(ex.message);
+    } finally {
+      setSavingHours(false);
+    }
+  }
+
+  function updateDay(dayOfWeek, patch) {
+    setHoursDays((prev) => prev.map((d) => (d.dayOfWeek === dayOfWeek ? { ...d, ...patch } : d)));
+  }
 
   async function saveSettings(e) {
     e.preventDefault();
@@ -231,7 +302,73 @@ export function AdminSettingsPage() {
             Fechar loja
           </button>
         </div>
+        <p className="muted" style={{ marginBottom: 0, fontSize: '0.85rem' }}>
+          O abrir/fechar manual vale até a próxima virada do horário semanal (quando a automação estiver ligada).
+        </p>
       </section>
+
+      <form className="card store-status-panel" onSubmit={saveHours}>
+        <div className="store-status-panel__head">
+          <div>
+            <span className="section-label">Horário de funcionamento</span>
+            <h2 className="store-status-panel__title">Dias e horários</h2>
+            <p className="muted" style={{ margin: 0 }}>
+              Defina abertura e fechamento por dia. Com a automação ligada, a loja muda sozinha nesses horários.
+            </p>
+          </div>
+        </div>
+        <label className="field" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <input type="checkbox" checked={autoSchedule} onChange={(e) => setAutoSchedule(e.target.checked)} />
+          <span>Abrir e fechar automaticamente nestes horários</span>
+        </label>
+        <div className="field">
+          <label htmlFor="store-timezone">Fuso horário</label>
+          <select id="store-timezone" value={timezone} onChange={(e) => setTimezone(e.target.value)}>
+            <option value="America/Cuiaba">Cuiabá (America/Cuiaba)</option>
+            <option value="America/Sao_Paulo">Brasília / São Paulo</option>
+            <option value="America/Manaus">Manaus</option>
+            <option value="America/Belem">Belém</option>
+            <option value="America/Fortaleza">Fortaleza</option>
+          </select>
+        </div>
+        <div className="store-hours-grid">
+          {hoursDays.map((day) => (
+            <div key={day.dayOfWeek} className={`store-hours-row${day.closed ? ' store-hours-row--closed' : ''}`}>
+              <label className="store-hours-row__day">
+                <input
+                  type="checkbox"
+                  checked={!day.closed}
+                  onChange={(e) => updateDay(day.dayOfWeek, { closed: !e.target.checked })}
+                />
+                <strong>{day.label}</strong>
+              </label>
+              {day.closed ? (
+                <span className="muted">Fechado</span>
+              ) : (
+                <div className="store-hours-row__times">
+                  <input
+                    type="time"
+                    value={day.openTime}
+                    onChange={(e) => updateDay(day.dayOfWeek, { openTime: e.target.value })}
+                    aria-label={`Abre ${day.label}`}
+                  />
+                  <span className="muted">até</span>
+                  <input
+                    type="time"
+                    value={day.closeTime}
+                    onChange={(e) => updateDay(day.dayOfWeek, { closeTime: e.target.value })}
+                    aria-label={`Fecha ${day.label}`}
+                  />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {hoursMsg && <p className="ok-msg">{hoursMsg}</p>}
+        <button type="submit" className="btn btn-primary" disabled={savingHours} style={{ width: 'auto' }}>
+          {savingHours ? 'Salvando…' : 'Salvar horários'}
+        </button>
+      </form>
 
       <section className="card store-status-panel">
         <div className="store-status-panel__head">

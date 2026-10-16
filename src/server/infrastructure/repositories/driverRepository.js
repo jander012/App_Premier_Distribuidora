@@ -2,13 +2,38 @@ import { query } from '../config/db.js';
 
 export async function listDrivers(storeId) {
   const { rows } = await query(
-    `SELECT id, store_id, name, cpf, vehicle_description, vehicle_photo_url, username, active, created_at, updated_at
+    `SELECT id, store_id, name, cpf, phone, vehicle_description, vehicle_photo_url, username, active, is_default, created_at, updated_at
      FROM delivery_drivers
      WHERE store_id = $1
-     ORDER BY active DESC, name ASC`,
+     ORDER BY is_default DESC, active DESC, name ASC`,
     [storeId]
   );
   return rows;
+}
+
+export async function findDefaultDriver(storeId) {
+  const { rows } = await query(
+    `SELECT * FROM delivery_drivers
+      WHERE store_id = $1 AND active = true AND is_default = true
+      ORDER BY id ASC LIMIT 1`,
+    [storeId]
+  );
+  return rows[0] || null;
+}
+
+export async function setDefaultDriver(storeId, driverId) {
+  await query(`UPDATE delivery_drivers SET is_default = false WHERE store_id = $1`, [storeId]);
+  if (driverId == null) {
+    await query(`UPDATE store_configs SET default_driver_id = NULL WHERE store_id = $1`, [storeId]);
+    return null;
+  }
+  await query(
+    `UPDATE delivery_drivers SET is_default = true, updated_at = now()
+      WHERE id = $1 AND store_id = $2 AND active = true`,
+    [driverId, storeId]
+  );
+  await query(`UPDATE store_configs SET default_driver_id = $1 WHERE store_id = $2`, [driverId, storeId]);
+  return findDriverById(driverId, storeId);
 }
 
 export async function findDriverById(id, storeId = null) {
@@ -33,19 +58,23 @@ export async function findDriverByUsername(storeId, username) {
 export async function createDriver(storeId, data) {
   const result = await query(
     `INSERT INTO delivery_drivers
-      (store_id, name, cpf, vehicle_description, vehicle_photo_url, username, password_hash, active)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      (store_id, name, cpf, phone, vehicle_description, vehicle_photo_url, username, password_hash, active, is_default)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
     [
       storeId,
       data.name,
       data.cpf,
+      data.phone || null,
       data.vehicleDescription || null,
       data.vehiclePhotoUrl || null,
       data.username,
       data.passwordHash,
       data.active !== false,
+      Boolean(data.isDefault),
     ]
   );
+  const created = await findDriverById(result.insertId, storeId);
+  if (data.isDefault) await setDefaultDriver(storeId, created.id);
   return findDriverById(result.insertId, storeId);
 }
 
@@ -53,6 +82,7 @@ export async function updateDriver(id, storeId, patch) {
   const allowed = {
     name: 'name',
     cpf: 'cpf',
+    phone: 'phone',
     vehicleDescription: 'vehicle_description',
     vehiclePhotoUrl: 'vehicle_photo_url',
     username: 'username',
@@ -94,6 +124,64 @@ export async function ensureRunForOrder(orderId, storeId) {
     [storeId, orderId]
   );
   const { rows } = await query(`SELECT * FROM delivery_runs WHERE order_id = $1`, [orderId]);
+  let run = rows[0] || null;
+  if (run && !run.driver_id) {
+    const def = await findDefaultDriver(storeId);
+    if (def) {
+      await query(
+        `UPDATE delivery_runs
+            SET driver_id = $2, status = 'accepted', accepted_at = COALESCE(accepted_at, now()), updated_at = now()
+          WHERE id = $1 AND driver_id IS NULL`,
+        [run.id, def.id]
+      );
+      await query(`UPDATE orders SET driver_id = $2, updated_at = now() WHERE id = $1 AND driver_id IS NULL`, [
+        orderId,
+        def.id,
+      ]);
+      const refreshed = await query(`SELECT * FROM delivery_runs WHERE id = $1`, [run.id]);
+      run = refreshed.rows[0] || run;
+    }
+  }
+  return run;
+}
+
+/** Atribui (ou remove) entregador do pedido e da corrida. */
+export async function assignDriverToOrder(orderId, storeId, driverId) {
+  await ensureRunForOrder(orderId, storeId);
+  if (driverId == null) {
+    await query(
+      `UPDATE delivery_runs
+          SET driver_id = NULL, status = 'available', accepted_at = NULL, updated_at = now()
+        WHERE order_id = $1 AND store_id = $2 AND status IN ('available', 'accepted', 'picked_up')`,
+      [orderId, storeId]
+    );
+    await query(`UPDATE orders SET driver_id = NULL, updated_at = now() WHERE id = $1 AND store_id = $2`, [
+      orderId,
+      storeId,
+    ]);
+  } else {
+    const driver = await findDriverById(driverId, storeId);
+    if (!driver || driver.active === false) return null;
+    await query(
+      `UPDATE delivery_runs
+          SET driver_id = $3, status = IF(status = 'available', 'accepted', status),
+              accepted_at = COALESCE(accepted_at, now()), updated_at = now()
+        WHERE order_id = $1 AND store_id = $2 AND status <> 'completed' AND status <> 'cancelled'`,
+      [orderId, storeId, driverId]
+    );
+    await query(`UPDATE orders SET driver_id = $3, updated_at = now() WHERE id = $1 AND store_id = $2`, [
+      orderId,
+      storeId,
+      driverId,
+    ]);
+  }
+  const { rows } = await query(
+    `SELECT dr.*, dd.name AS driver_name, dd.phone AS driver_phone
+       FROM delivery_runs dr
+       LEFT JOIN delivery_drivers dd ON dd.id = dr.driver_id
+      WHERE dr.order_id = $1 AND dr.store_id = $2`,
+    [orderId, storeId]
+  );
   return rows[0] || null;
 }
 

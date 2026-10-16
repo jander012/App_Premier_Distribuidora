@@ -11,11 +11,17 @@ function publicDriver(row) {
     storeId: row.store_id,
     name: row.name,
     cpf: row.cpf,
+    phone: row.phone || '',
     vehicleDescription: row.vehicle_description,
     vehiclePhotoUrl: row.vehicle_photo_url,
     username: row.username,
     active: row.active !== false,
+    isDefault: Boolean(row.is_default),
   };
+}
+
+function digitsPhone(phone) {
+  return String(phone || '').replace(/\D/g, '');
 }
 
 function runPayload(row, { hideCustomer = false } = {}) {
@@ -71,14 +77,18 @@ export async function adminCreateDriver(req, res, next) {
   try {
     const password = String(req.body.password || '').trim();
     if (password.length < 4) throw new AppError(400, 'Informe uma senha com pelo menos 4 caracteres.');
+    const phone = digitsPhone(req.body.phone);
+    if (phone && phone.length < 10) throw new AppError(400, 'Informe um WhatsApp válido com DDD.');
     const row = await driverRepo.createDriver(req.storeId, {
       name: String(req.body.name || '').trim(),
       cpf: String(req.body.cpf || '').trim(),
+      phone: phone || null,
       vehicleDescription: String(req.body.vehicleDescription || req.body.vehicle_description || '').trim(),
       vehiclePhotoUrl: String(req.body.vehiclePhotoUrl || req.body.vehicle_photo_url || '').trim(),
       username: String(req.body.username || '').trim().toLowerCase(),
       passwordHash: await bcrypt.hash(password, 10),
       active: req.body.active !== false,
+      isDefault: Boolean(req.body.isDefault ?? req.body.is_default),
     });
     res.status(201).json(publicDriver(row));
   } catch (e) {
@@ -92,6 +102,11 @@ export async function adminUpdateDriver(req, res, next) {
     for (const k of ['name', 'cpf', 'username']) {
       if (req.body[k] !== undefined) patch[k] = String(req.body[k] || '').trim();
     }
+    if (req.body.phone !== undefined) {
+      const phone = digitsPhone(req.body.phone);
+      if (phone && phone.length < 10) throw new AppError(400, 'Informe um WhatsApp válido com DDD.');
+      patch.phone = phone || null;
+    }
     if (req.body.vehicleDescription !== undefined || req.body.vehicle_description !== undefined) {
       patch.vehicleDescription = String(req.body.vehicleDescription ?? req.body.vehicle_description ?? '').trim();
     }
@@ -100,9 +115,53 @@ export async function adminUpdateDriver(req, res, next) {
     }
     if (req.body.active !== undefined) patch.active = Boolean(req.body.active);
     if (req.body.password) patch.passwordHash = await bcrypt.hash(String(req.body.password), 10);
-    const row = await driverRepo.updateDriver(Number(req.params.id), req.storeId, patch);
+    const id = Number(req.params.id);
+    const row = await driverRepo.updateDriver(id, req.storeId, patch);
     if (!row) return res.status(404).json({ error: 'Entregador não encontrado' });
-    res.json(publicDriver(row));
+    if (req.body.isDefault === true || req.body.is_default === true) {
+      await driverRepo.setDefaultDriver(req.storeId, id);
+    } else if (req.body.isDefault === false || req.body.is_default === false) {
+      if (row.is_default) await driverRepo.setDefaultDriver(req.storeId, null);
+    }
+    res.json(publicDriver(await driverRepo.findDriverById(id, req.storeId)));
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function adminSetDefaultDriver(req, res, next) {
+  try {
+    const driverId = req.body?.driverId != null ? Number(req.body.driverId) : null;
+    if (driverId != null && !Number.isFinite(driverId)) {
+      throw new AppError(400, 'Entregador inválido');
+    }
+    const row = await driverRepo.setDefaultDriver(req.storeId, driverId);
+    if (driverId != null && !row) return res.status(404).json({ error: 'Entregador não encontrado ou inativo' });
+    const drivers = await driverRepo.listDrivers(req.storeId);
+    res.json({ defaultDriver: publicDriver(row), drivers: drivers.map(publicDriver) });
+  } catch (e) {
+    next(e);
+  }
+}
+
+export async function adminAssignOrderDriver(req, res, next) {
+  try {
+    const orderId = Number(req.params.id);
+    if (!Number.isFinite(orderId)) throw new AppError(400, 'Pedido inválido');
+    const raw = req.body?.driverId ?? req.body?.driver_id;
+    const driverId = raw === null || raw === '' || raw === undefined ? null : Number(raw);
+    if (driverId != null && !Number.isFinite(driverId)) throw new AppError(400, 'Entregador inválido');
+    const order = await orderRepo.getOrderById(orderId);
+    if (!order || order.store_id !== req.storeId) throw new AppError(404, 'Pedido não encontrado');
+    const run = await driverRepo.assignDriverToOrder(orderId, req.storeId, driverId);
+    if (driverId != null && !run?.driver_id) throw new AppError(404, 'Entregador não encontrado ou inativo');
+    res.json({
+      orderId,
+      driverId: run?.driver_id ?? null,
+      driverName: run?.driver_name || null,
+      driverPhone: run?.driver_phone || null,
+      runStatus: run?.status || null,
+    });
   } catch (e) {
     next(e);
   }

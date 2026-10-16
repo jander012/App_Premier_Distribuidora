@@ -113,7 +113,7 @@ export async function createOrder(body, opts = {}) {
   const bad = summary.items.find((i) => !i.available);
   if (bad) throw new AppError(400, `Produto indisponível: ${bad.name}`);
   if (!summary.storeId) throw new AppError(400, 'Loja do carrinho indefinida');
-  const storeStatus = await storeStatusRepo.getCurrentStatus(summary.storeId);
+  const storeStatus = await storeStatusRepo.getEffectiveStatus(summary.storeId);
   if (!storeStatus.isOpen) {
     throw new AppError(409, 'A loja está fechada no momento. Tente novamente quando reabrir.');
   }

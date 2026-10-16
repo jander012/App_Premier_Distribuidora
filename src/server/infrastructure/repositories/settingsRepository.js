@@ -31,6 +31,9 @@ export async function updateStoreConfig(storeId, patch) {
     'whatsapp_status_template',
     'linx_integration_enabled',
     'pickingo_integration_enabled',
+    'auto_schedule_enabled',
+    'store_timezone',
+    'default_driver_id',
   ];
   const sets = [];
   const vals = [];

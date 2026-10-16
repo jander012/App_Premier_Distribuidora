@@ -25,7 +25,7 @@ export async function getPublicSettings(req, res, next) {
     if (!store) throw new AppError(404, 'Loja não encontrada');
     const s = await settingsRepo.getStoreConfig(store.id);
     const rawPoly = await deliveryRepo.getDeliveryPolygonForStore(store.id);
-    const status = await storeStatusRepo.getCurrentStatus(store.id);
+    const status = await storeStatusRepo.getEffectiveStatus(store.id);
     const poly = parseDeliveryPolygon(rawPoly);
     const polygonZones = await deliveryRepo.listPolygonZones(store.id);
     const oLa = s?.delivery_origin_lat != null ? Number(s.delivery_origin_lat) : null;

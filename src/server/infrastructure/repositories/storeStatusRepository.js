@@ -1,8 +1,12 @@
 import { query } from '../config/db.js';
+import * as storeHoursRepo from './storeHoursRepository.js';
+import * as settingsRepo from './settingsRepository.js';
 
 const OPEN = 'open';
 const CLOSED = 'closed';
 const DEFAULT_STATUS = OPEN;
+const SOURCE_MANUAL = 'manual';
+const SOURCE_SCHEDULE = 'schedule';
 
 function normalizeStatus(status) {
   const s = String(status || '').trim().toLowerCase();
@@ -80,6 +84,7 @@ function serializeEvent(row) {
     storeId: row.store_id,
     status: row.status,
     reason: row.reason || '',
+    source: row.source || SOURCE_MANUAL,
     createdByAdminId: row.created_by_admin_id,
     createdAt: row.created_at,
   };
@@ -106,15 +111,62 @@ export async function getCurrentStatus(storeId) {
   };
 }
 
-export async function createStatusEvent(storeId, status, { reason = null, adminId = null } = {}) {
+export async function createStatusEvent(
+  storeId,
+  status,
+  { reason = null, adminId = null, source = SOURCE_MANUAL } = {}
+) {
   const normalized = normalizeStatus(status);
   if (!normalized) throw new Error('Status inválido');
+  const src = source === SOURCE_SCHEDULE ? SOURCE_SCHEDULE : SOURCE_MANUAL;
   await query(
-    `INSERT INTO store_status_events (store_id, status, reason, created_by_admin_id)
-     VALUES ($1, $2, $3, $4)`,
-    [storeId, normalized, reason, adminId]
+    `INSERT INTO store_status_events (store_id, status, reason, created_by_admin_id, source)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [storeId, normalized, reason, adminId, src]
   );
   return getCurrentStatus(storeId);
+}
+
+/**
+ * Aplica abertura/fechamento automático pelo horário semanal.
+ * Respeita override manual dentro do período atual (até a próxima virada do horário).
+ */
+export async function reconcileScheduleStatus(storeId) {
+  const config = await settingsRepo.getStoreConfig(storeId);
+  if (!config?.auto_schedule_enabled) {
+    return getCurrentStatus(storeId);
+  }
+  const week = await storeHoursRepo.listWeeklyHours(storeId);
+  const tz = config.store_timezone || storeHoursRepo.DEFAULT_TZ;
+  const now = new Date();
+  const clock = storeHoursRepo.getStoreClock(tz, now);
+  const scheduleOpen = storeHoursRepo.isOpenBySchedule(week, clock);
+  const desired = scheduleOpen ? OPEN : CLOSED;
+  const current = await getCurrentStatus(storeId);
+
+  if (current.status === desired) return current;
+
+  const latest = current.latestEvent;
+  if (latest?.source === SOURCE_MANUAL && latest.createdAt) {
+    const periodStart = storeHoursRepo.currentPeriodStartedAt(week, clock, now);
+    if (new Date(latest.createdAt) >= periodStart) {
+      return current;
+    }
+  }
+
+  return createStatusEvent(storeId, desired, {
+    reason: scheduleOpen ? 'Abertura automática pelo horário' : 'Fechamento automático pelo horário',
+    source: SOURCE_SCHEDULE,
+  });
+}
+
+/** Status efetivo (com reconciliação de horário). Use isto na vitrine e no checkout. */
+export async function getEffectiveStatus(storeId) {
+  try {
+    return await reconcileScheduleStatus(storeId);
+  } catch {
+    return getCurrentStatus(storeId);
+  }
 }
 
 export async function getMonthlySummary(storeId, month) {

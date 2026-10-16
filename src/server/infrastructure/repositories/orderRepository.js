@@ -121,32 +121,41 @@ export async function listOrdersAdmin({
   offset = 0,
 }) {
   const params = [storeId];
-  let sql = `SELECT * FROM orders WHERE store_id = $1`;
+  let sql = `SELECT o.*,
+            COALESCE(o.driver_id, dr.driver_id) AS assigned_driver_id,
+            dd.name AS driver_name,
+            dd.phone AS driver_phone,
+            dr.id AS delivery_run_id,
+            dr.status AS delivery_run_status
+       FROM orders o
+       LEFT JOIN delivery_runs dr ON dr.order_id = o.id
+       LEFT JOIN delivery_drivers dd ON dd.id = COALESCE(o.driver_id, dr.driver_id)
+      WHERE o.store_id = $1`;
   let i = 2;
   if (status) {
-    sql += ` AND status = $${i++}`;
+    sql += ` AND o.status = $${i++}`;
     params.push(status);
   }
   if (phone && String(phone).replace(/\D/g, '')) {
     const digits = String(phone).replace(/\D/g, '');
-    sql += ` AND REGEXP_REPLACE(customer_phone, '[^0-9]', '') LIKE $${i++}`;
+    sql += ` AND REGEXP_REPLACE(o.customer_phone, '[^0-9]', '') LIKE $${i++}`;
     params.push(`%${digits}%`);
   }
   if (orderId != null && Number.isFinite(Number(orderId))) {
-    sql += ` AND id = $${i++}`;
+    sql += ` AND o.id = $${i++}`;
     params.push(Number(orderId));
   }
   if (fromDate) {
-    sql += ` AND created_at >= DATE($${i++})`;
+    sql += ` AND o.created_at >= DATE($${i++})`;
     params.push(fromDate);
   }
   if (toDate) {
-    sql += ` AND created_at < DATE_ADD(DATE($${i++}), INTERVAL 1 DAY)`;
+    sql += ` AND o.created_at < DATE_ADD(DATE($${i++}), INTERVAL 1 DAY)`;
     params.push(toDate);
   }
   const safeLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const safeOffset = Math.max(Number(offset) || 0, 0);
-  sql += ` ORDER BY created_at ASC, id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
+  sql += ` ORDER BY o.created_at ASC, o.id ASC LIMIT ${safeLimit} OFFSET ${safeOffset}`;
   const { rows } = await query(sql, params);
   return rows;
 }

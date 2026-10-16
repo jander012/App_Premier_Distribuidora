@@ -8,6 +8,7 @@ const routeComponents = {
   categories: dynamic(() => import('../../../presentation/admin/pages/AdminCategoriesPage.jsx').then((m) => m.AdminCategoriesPage), { ssr: false }),
   settings: dynamic(() => import('../../../presentation/admin/pages/AdminSettingsPage.jsx').then((m) => m.AdminSettingsPage), { ssr: false }),
   delivery: dynamic(() => import('../../../presentation/admin/pages/AdminDeliveryPage.jsx').then((m) => m.AdminDeliveryPage), { ssr: false }),
+  drivers: dynamic(() => import('../../../presentation/admin/pages/AdminDriversPage.jsx').then((m) => m.AdminDriversPage), { ssr: false }),
   coupons: dynamic(() => import('../../../presentation/admin/pages/AdminCouponsPage.jsx').then((m) => m.AdminCouponsPage), { ssr: false }),
   promotions: dynamic(
     () => import('../../../presentation/admin/pages/AdminPromotionsPage.jsx').then((m) => m.AdminPromotionsPage),

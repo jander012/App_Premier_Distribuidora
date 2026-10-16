@@ -1,10 +1,42 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
 import { readListSession, restoreListScroll, writeListSession } from '../../utils/listSession.js';
 
 const PAGE_SIZE = 10;
 const LIST_KEY = 'admin-orders';
+
+function orderLocationUrl(row) {
+  const lat = row.delivery_latitude != null ? Number(row.delivery_latitude) : null;
+  const lng = row.delivery_longitude != null ? Number(row.delivery_longitude) : null;
+  if (Number.isFinite(lat) && Number.isFinite(lng)) {
+    return `https://www.google.com/maps?q=${lat},${lng}`;
+  }
+  const parts = [row.delivery_street, row.delivery_number, row.delivery_neighborhood, row.delivery_zip_code]
+    .map((p) => String(p || '').trim())
+    .filter(Boolean);
+  if (!parts.length) return null;
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(', '))}`;
+}
+
+function whatsappDriverUrl(driverPhone, order) {
+  const digits = String(driverPhone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const phone = digits.startsWith('55') ? digits : `55${digits}`;
+  const maps = orderLocationUrl(order);
+  const address = [order.delivery_street, order.delivery_number, order.delivery_neighborhood]
+    .map((p) => String(p || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const lines = [
+    `Pedido #${order.id}`,
+    address ? `Endereço: ${address}` : null,
+    order.customer_phone ? `Cliente: ${order.customer_phone}` : null,
+    maps ? `Localização: ${maps}` : null,
+  ].filter(Boolean);
+  return `https://wa.me/${phone}?text=${encodeURIComponent(lines.join('\n'))}`;
+}
 
 const EMPTY_FILTERS = {
   status: '',
@@ -219,6 +251,8 @@ export function AdminOrdersPage() {
   const [detail, setDetail] = useState(null);
   const [printBusy, setPrintBusy] = useState(false);
   const [printHint, setPrintHint] = useState(null);
+  const [drivers, setDrivers] = useState([]);
+  const [driverBusyId, setDriverBusyId] = useState(null);
   const skipPageReset = useRef(true);
   const scrollRestored = useRef(false);
 
@@ -243,9 +277,52 @@ export function AdminOrdersPage() {
     }
   }, [page, filters]);
 
+  const loadDrivers = useCallback(async () => {
+    try {
+      const rows = await api.get('/admin/drivers', { headers: adminHeaders() });
+      setDrivers(Array.isArray(rows) ? rows.filter((d) => d.active !== false) : []);
+    } catch {
+      setDrivers([]);
+    }
+  }, []);
+
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    loadDrivers();
+  }, [loadDrivers]);
+
+  async function assignDriver(orderId, driverId) {
+    setDriverBusyId(orderId);
+    setErr(null);
+    try {
+      const res = await api.patch(
+        `/admin/orders/${orderId}/driver`,
+        { driverId: driverId === '' ? null : Number(driverId) },
+        { headers: adminHeaders() }
+      );
+      setData((prev) => ({
+        ...prev,
+        items: prev.items.map((row) =>
+          row.id === orderId
+            ? {
+                ...row,
+                driver_id: res.driverId,
+                assigned_driver_id: res.driverId,
+                driver_name: res.driverName,
+                driver_phone: res.driverPhone,
+              }
+            : row
+        ),
+      }));
+    } catch (e) {
+      setErr(e.message);
+    } finally {
+      setDriverBusyId(null);
+    }
+  }
 
   useEffect(() => {
     if (skipPageReset.current) {
@@ -350,6 +427,9 @@ export function AdminOrdersPage() {
     <div>
       <div className="admin-toolbar">
         <h1>Pedidos</h1>
+        <Link to="/admin/painel/entregadores" className="btn btn-ghost" style={{ width: 'auto' }}>
+          Entregadores
+        </Link>
       </div>
       <div className="card admin-filters" style={{ marginBottom: '1rem', padding: '1rem' }}>
         <div className="admin-filters__grid">
@@ -426,6 +506,24 @@ export function AdminOrdersPage() {
               <p style={{ margin: 0, fontSize: '0.82rem' }} className="muted">
                 Pagamento: {row.payment_method_code || '—'}
               </p>
+              <div className="field" style={{ margin: '0.65rem 0 0' }}>
+                <label style={{ fontSize: '0.8rem' }}>Entregador</label>
+                <select
+                  value={row.assigned_driver_id || row.driver_id || ''}
+                  disabled={driverBusyId === row.id}
+                  onChange={(e) => assignDriver(row.id, e.target.value)}
+                  aria-label={`Entregador do pedido ${row.id}`}
+                  style={{ width: '100%' }}
+                >
+                  <option value="">Sem entregador</option>
+                  {drivers.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.name}
+                      {d.isDefault ? ' (padrão)' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="admin-order-card__actions">
                 <select value={row.status} onChange={(e) => patchOrderStatus(row.id, e.target.value)} aria-label="Status do pedido">
                   {STATUSES.map((s) => (
@@ -437,6 +535,25 @@ export function AdminOrdersPage() {
                 <button type="button" className="btn btn-ghost" style={{ width: 'auto' }} onClick={() => openDetail(row.id)}>
                   Ver / imprimir
                 </button>
+                {(() => {
+                  const driver =
+                    drivers.find((d) => d.id === (row.assigned_driver_id || row.driver_id)) ||
+                    (row.driver_phone ? { phone: row.driver_phone, name: row.driver_name } : null);
+                  const wa = driver?.phone ? whatsappDriverUrl(driver.phone, row) : null;
+                  if (!wa) return null;
+                  return (
+                    <a
+                      className="btn btn-primary"
+                      style={{ width: 'auto', textDecoration: 'none' }}
+                      href={wa}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title="Enviar localização no WhatsApp do entregador"
+                    >
+                      WhatsApp localização
+                    </a>
+                  );
+                })()}
               </div>
             </article>
           ))}

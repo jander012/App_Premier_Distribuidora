@@ -235,6 +235,56 @@ a {
   margin-bottom: 0.75rem;
 }
 
+.store-hours-grid {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.store-hours-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.4fr);
+  gap: 0.75rem;
+  align-items: center;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--surface2);
+  border-radius: 10px;
+  background: var(--bg);
+}
+
+.store-hours-row--closed {
+  opacity: 0.72;
+}
+
+.store-hours-row__day {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  margin: 0;
+}
+
+.store-hours-row__times {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.store-hours-row__times input[type='time'] {
+  min-height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--surface2);
+  background: #fff;
+  color: var(--text);
+  padding: 0.25rem 0.45rem;
+}
+
+@media (max-width: 640px) {
+  .store-hours-row {
+    grid-template-columns: 1fr;
+  }
+}
+
 .store-status-panel__head {
   display: flex;
   align-items: flex-start;
