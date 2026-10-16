@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from '../../navigation.js';
 import { api } from '../../api/client.js';
 import { adminHeaders } from '../adminAuth.js';
+import { AdminOrdersLiveMap } from '../components/AdminOrdersLiveMap.jsx';
 
 const KANBAN_COLS = [
   { key: 'received', title: 'Recebido', statuses: ['received'] },
@@ -299,6 +300,7 @@ export function AdminOrdersPage() {
   const [dragId, setDragId] = useState(null);
   const [openCardId, setOpenCardId] = useState(null);
   const [drivers, setDrivers] = useState([]);
+  const [storeOrigin, setStoreOrigin] = useState({ lat: null, lng: null });
   const [now, setNow] = useState(() => Date.now());
   const pollRef = useRef(null);
 
@@ -313,6 +315,20 @@ export function AdminOrdersPage() {
       setDrivers((res.drivers || []).filter((d) => d.active !== false));
     } catch {
       /* lista opcional */
+    }
+  }, []);
+
+  const loadStoreOrigin = useCallback(async () => {
+    try {
+      const d = await api.get('/admin/delivery', { headers: adminHeaders() });
+      const lat = d.deliveryOriginLat != null ? Number(d.deliveryOriginLat) : null;
+      const lng = d.deliveryOriginLng != null ? Number(d.deliveryOriginLng) : null;
+      setStoreOrigin({
+        lat: Number.isFinite(lat) ? lat : null,
+        lng: Number.isFinite(lng) ? lng : null,
+      });
+    } catch {
+      /* mapa usa fallback */
     }
   }, []);
 
@@ -347,12 +363,13 @@ export function AdminOrdersPage() {
     if (view === 'kanban') {
       loadKanban();
       loadDrivers();
+      loadStoreOrigin();
       pollRef.current = setInterval(loadKanban, 15000);
       return () => clearInterval(pollRef.current);
     }
     loadHistory();
     return undefined;
-  }, [view, loadKanban, loadHistory, loadDrivers]);
+  }, [view, loadKanban, loadHistory, loadDrivers, loadStoreOrigin]);
 
   const columns = useMemo(() => {
     const map = { received: [], preparing: [], andamento: [] };
@@ -506,6 +523,7 @@ export function AdminOrdersPage() {
       {err && <p className="err">{err}</p>}
 
       {view === 'kanban' && (
+        <div className="admin-orders-workspace">
         <div className="admin-kanban">
           {KANBAN_COLS.map((col) => (
             <section
@@ -690,6 +708,12 @@ export function AdminOrdersPage() {
               </div>
             </section>
           ))}
+        </div>
+        <AdminOrdersLiveMap
+          orders={orders}
+          storeOriginLat={storeOrigin.lat}
+          storeOriginLng={storeOrigin.lng}
+        />
         </div>
       )}
 
