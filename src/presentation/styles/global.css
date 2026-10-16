@@ -1732,23 +1732,22 @@ body {
 
 .category-pill__visual {
   display: flex;
-  align-items: flex-end;
+  align-items: stretch;
   justify-content: center;
   width: min(100%, 100px);
   aspect-ratio: 1.55 / 1;
   border-radius: 9px 9px 0 0;
   background: var(--category-bg, #f8d7dd);
-  overflow: visible;
+  overflow: hidden;
   box-shadow: 0 8px 18px rgba(23, 23, 23, 0.06);
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
 
 .category-pill__visual img {
-  width: 92%;
-  height: 92%;
-  object-fit: contain;
-  transform: translateY(10%);
-  filter: drop-shadow(0 8px 8px rgba(23, 23, 23, 0.16));
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 
 .category-pill__fallback {
