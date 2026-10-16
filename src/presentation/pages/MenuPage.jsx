@@ -34,9 +34,6 @@ function initialMenuListState(storeSlug) {
   };
 }
 const DESTAQUE_FALLBACK_COUNT = 4;
-const HERO_OVERLAY =
-  'linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%)';
-
 function appendAgeParam(path, isAdult) {
   const join = path.includes('?') ? '&' : '?';
   return `${path}${join}${restrictedQueryParam(isAdult)}`;
@@ -53,11 +50,11 @@ function buildProductsPath(storeSlug, filterCategoryId, page, q, isAdult) {
   return appendAgeParam(withStoreQuery(`/products?${params.toString()}`, storeSlug), isAdult);
 }
 
-function heroBackgroundStyle(url) {
+function heroMediaStyle(url) {
   const raw = String(url || '').trim();
   if (!raw) return undefined;
   return {
-    backgroundImage: `${HERO_OVERLAY}, url("${raw.replace(/"/g, '%22')}")`,
+    backgroundImage: `url("${raw.replace(/"/g, '%22')}")`,
   };
 }
 
@@ -321,7 +318,7 @@ export function MenuPage() {
 
   const loading = loadingCategories;
   const storeOpen = deliveryPublic?.storeOpen !== false;
-  const heroStyle = heroBackgroundStyle(deliveryPublic?.heroImageUrl);
+  const heroStyle = heroMediaStyle(deliveryPublic?.heroImageUrl);
 
   if (ageDecision === null) {
     return (
@@ -336,16 +333,19 @@ export function MenuPage() {
 
   return (
     <div className="menu-page">
-      <section className="menu-hero" style={heroStyle}>
-        <div>
-          <span className="menu-hero__eyebrow">Delivery Premier</span>
-          <h1 className="page-title">Portfólio</h1>
-          <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+      <section className="menu-hero">
+        <div className="menu-hero__bar">
+          <div className="menu-hero__copy">
+            <span className="menu-hero__eyebrow">Delivery Premier</span>
+            <h1 className="page-title">Portfólio</h1>
+            <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+          </div>
+          <div className={`menu-hero__meta ${storeOpen ? '' : 'menu-hero__meta--closed'}`}>
+            <strong>{storeOpen ? 'Aberto' : 'Fechado'}</strong>
+            <span>{storeOpen ? 'Entrega rápida' : 'Pedidos pausados'}</span>
+          </div>
         </div>
-        <div className={`menu-hero__meta ${storeOpen ? '' : 'menu-hero__meta--closed'}`}>
-          <strong>{storeOpen ? 'Aberto' : 'Fechado'}</strong>
-          <span>{storeOpen ? 'Entrega rápida' : 'Pedidos pausados'}</span>
-        </div>
+        <div className="menu-hero__media" style={heroStyle} role="img" aria-label="Banner da loja" />
       </section>
       <div className="menu-search">
         <label className="menu-search__label" htmlFor="menu-product-search">

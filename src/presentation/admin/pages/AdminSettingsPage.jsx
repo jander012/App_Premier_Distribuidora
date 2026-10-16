@@ -80,14 +80,11 @@ function mediaSrc(url) {
   return u;
 }
 
-const HERO_OVERLAY =
-  'linear-gradient(100deg, rgba(23, 23, 23, 0.96) 0%, rgba(23, 23, 23, 0.78) 62%, rgba(251, 188, 35, 0.48) 100%)';
-
-function heroBackgroundStyle(url) {
+function heroMediaStyle(url) {
   const raw = mediaSrc(url);
   if (!raw) return undefined;
   return {
-    backgroundImage: `${HERO_OVERLAY}, url("${raw.replace(/"/g, '%22')}")`,
+    backgroundImage: `url("${raw.replace(/"/g, '%22')}")`,
   };
 }
 
@@ -114,7 +111,7 @@ function HeroImagePreview({ url, label, onPreview }) {
 
 /** Preview interno: como o banner aparece no hero do cardápio (home). */
 function HomeHeroProjection({ url, label, onClose }) {
-  const style = heroBackgroundStyle(url);
+  const style = heroMediaStyle(url);
   return (
     <div
       className="admin-modal-backdrop"
@@ -137,16 +134,19 @@ function HomeHeroProjection({ url, label, onClose }) {
           </button>
         </div>
         <div className="admin-hero-projection__frame">
-          <section className="menu-hero" style={style}>
-            <div>
-              <span className="menu-hero__eyebrow">Delivery Premier</span>
-              <h1 className="page-title">Portfólio</h1>
-              <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+          <section className="menu-hero">
+            <div className="menu-hero__bar">
+              <div className="menu-hero__copy">
+                <span className="menu-hero__eyebrow">Delivery Premier</span>
+                <h1 className="page-title">Portfólio</h1>
+                <p className="muted">Escolha seus produtos favoritos e finalize o pedido em poucos passos.</p>
+              </div>
+              <div className="menu-hero__meta">
+                <strong>Aberto</strong>
+                <span>Entrega rápida</span>
+              </div>
             </div>
-            <div className="menu-hero__meta">
-              <strong>Aberto</strong>
-              <span>Entrega rápida</span>
-            </div>
+            <div className="menu-hero__media" style={style} role="img" aria-label={label || 'Banner'} />
           </section>
           <div className="admin-hero-projection__fake-search muted">Buscar produtos…</div>
         </div>
